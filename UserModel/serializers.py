@@ -20,13 +20,13 @@ class UserCreateSerializer(serializers.ModelSerializer):
     def validate_email(self, value):
         value=value.lower()
         if User.objects.filter(email__iexact=value).exists():
-            raise serializers.ValidationError("A user with email already exists.")
+            raise serializers.ValidationError("A user with this  email already exists.")
         return value
 
     def validate(self,attrs):
         if attrs['password']!= attrs['confirm_password']:
             raise serializers.ValidationError(
-                {"confirm_password":"password does not match."}
+                {"confirm_password":"passwords do not match."}
             )
         return attrs
 
@@ -45,3 +45,8 @@ class UserUpdateSerializer(serializers.ModelSerializer):
         model= User
         fields= ['id','username','email','status']+PROFILE_FIELDS
         read_only_fields= ['id','status']
+    def validate_email(self,value):
+        value=value.lower()
+        if User.objects.filter(email_iexact=value).exclude(pk=self.instance.pk).exists():
+            raise serializers.ValidationError("A user with email already exists.")
+        return value

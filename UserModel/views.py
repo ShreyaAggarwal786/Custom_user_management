@@ -10,6 +10,11 @@ from .serializers import(
     UserUpdateSerializer,
 )
 
+from .emails import send_welcome_email
+import logging
+
+logger= logging.getLogger(__name__)
+
 class UserViewSet(viewsets.ModelViewSet):
     queryset= User.objects.all().order_by('id')
     permission_classes=[AllowAny]
@@ -23,6 +28,10 @@ class UserViewSet(viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         user= serializer.save()
+        try:
+            send_welcome_email(user)
+        except Exception:
+            logger.exception("welcome email failed for user id=%s", user.pk)
 
     def destroy(self, request, *args, **kwargs):
         user= self.get_object()
