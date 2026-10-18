@@ -124,6 +124,10 @@ STATIC_URL = 'static/'
 MEDIA_URL= '/media/'
 MEDIA_ROOT= BASE_DIR / 'media'
 
+LOGIN_REDIRECT_URL = "/api/users/"
+
+DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
+
 EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
 EMAIL_HOST = "smtp.gmail.com"
 EMAIL_PORT = 587
@@ -135,6 +139,25 @@ EMAIL_TIMEOUT= 10
 
 
 OTP_EXPIRY_MINUTES= 5
+OTP_MAX_ATTEMPTS = 3
+
+
+REST_FRAMEWORK= {
+    "DEFAULT_AUTHENTICATION_CLASSES" :(
+        "UserModel.authentication.ActiveStatusJWTAuthentication",
+        "rest_framework.authentication.SessionAuthentication",
+    ),
+    "DEFAULT_PERMISSION_CLASSES":(
+        "rest_framework.permissions.IsAuthenticated",
+    ),
+}
+
+from datetime import timedelta
+
+SIMPLE_JWT= {
+    "ACCESS_TOKEN_LIFETIME": timedelta(minutes=30),
+    "REFRESH_TOKEN_LIFETIME": timedelta(days=1),
+}
 
 # Email
 # https://docs.djangoproject.com/en/6.1/topics/email/#topic-email-configuration

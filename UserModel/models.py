@@ -10,7 +10,7 @@ from django.utils import timezone
 
 class User(AbstractUser):
     class Profile(models.TextChoices):
-        ADMINISTRATION= "administrator", "Administrator"
+        ADMINISTRATOR= "administrator", "Administrator"
         STANDARD= "standard", "Standard"
         DEVELOPER= "developer", "Developer"
         CLIENT= "client", "Client"
@@ -66,6 +66,7 @@ class OTP(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     expires_at = models.DateTimeField()
     is_used = models.BooleanField(default=False)
+    attempts = models.PositiveSmallIntegerField(default=0)
 
     def save(self, *args, **kwargs):
         if not self.pk:
