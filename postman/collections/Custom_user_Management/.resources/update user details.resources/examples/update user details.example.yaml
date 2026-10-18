@@ -1,0 +1,83 @@
+$kind: http-example
+request:
+  url: http://127.0.0.1:8000/api/users/12/
+  method: PATCH
+  body:
+    type: json
+    content: "{\r
+
+      \    \"id\": 12,\r
+
+      \    \"username\": \"chahat\",\r
+
+      \    \"email\": \"user@example.com\",\r
+
+      \    \"status\": \"active\",\r
+
+      \    \"first_name\": \"\",\r
+
+      \    \"last_name\": \"\",\r
+
+      \    \"profiles\": \"standard\",\r
+
+      \    \"date_of_birth\": \"2001-06-08\",\r
+
+      \    \"gender\": \"\",\r
+
+      \    \"nationality\": \"\",\r
+
+      \    \"image\": null,\r
+
+      \    \"blood_group\": \"\",\r
+
+      \    \"phone\": \"\",\r
+
+      \    \"permanent_address\": \"\",\r
+
+      \    \"current_address\": \"\",\r
+
+      \    \"emergency_contact_name\": \"\",\r
+
+      \    \"emergency_contact_number\": \"\",\r
+
+      \    \"emergency_contact_relationship\": \"\"\r
+
+      }"
+response:
+  statusCode: 200
+  statusText: OK
+  headers:
+    date: Sun, 18 Oct 2026 11:41:38 GMT
+    server: WSGIServer/0.2 CPython/3.13.12
+    content-type: application/json
+    vary: Accept
+    allow: GET, PUT, PATCH, DELETE, HEAD, OPTIONS
+    x-frame-options: DENY
+    content-length: "370"
+    x-content-type-options: nosniff
+    referrer-policy: same-origin
+    cross-origin-opener-policy: same-origin
+  body:
+    type: json
+    content: |-
+      {
+        "id": 12,
+        "username": "chahat",
+        "email": "user@example.com",
+        "status": "active",
+        "first_name": "",
+        "last_name": "",
+        "profiles": "standard",
+        "date_of_birth": "2001-06-08",
+        "gender": "",
+        "nationality": "",
+        "image": null,
+        "blood_group": "",
+        "phone": "",
+        "permanent_address": "",
+        "current_address": "",
+        "emergency_contact_name": "",
+        "emergency_contact_number": "",
+        "emergency_contact_relationship": ""
+      }
+order: 1000

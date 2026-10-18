@@ -1,0 +1,79 @@
+$kind: http-example
+request:
+  url: " http://127.0.0.1:8000/api/users/"
+  method: POST
+  body:
+    type: json
+    content: "{\r
+
+      \    \"username\": \"riya_sharma\",\r
+
+      \    \"email\": \"riya.sharma2026@example.com\",\r
+
+      \    \"password\": \"RiyaPass#2026\",\r
+
+      \    \"confirm_password\": \"RiyaPass#2026\",\r
+
+      \    \"first_name\": \"Riya\",\r
+
+      \    \"last_name\": \"Sharma\",\r
+
+      \    \"date_of_birth\": \"1999-08-14\",\r
+
+      \    \"gender\": \"female\",\r
+
+      \    \"nationality\": \"indian\",\r
+
+      \    \"blood_group\": \"B+\",\r
+
+      \    \"phone\": \"9812345670\",\r
+
+      \    \"permanent_address\": \"45 Model Town, Ludhiana, Punjab\",\r
+
+      \    \"current_address\": \"12 Sarabha Nagar, Ludhiana, Punjab\",\r
+
+      \    \"emergency_contact_name\": \"Anil Sharma\",\r
+
+      \    \"emergency_contact_number\": \"9876501234\",\r
+
+      \    \"emergency_contact_relationship\": \"Father\"\r
+
+      }"
+response:
+  statusCode: 201
+  statusText: Created
+  headers:
+    date: Sun, 18 Oct 2026 11:30:01 GMT
+    server: WSGIServer/0.2 CPython/3.13.12
+    content-type: application/json
+    vary: Accept, Cookie
+    allow: GET, POST, HEAD, OPTIONS
+    x-frame-options: DENY
+    content-length: "506"
+    x-content-type-options: nosniff
+    referrer-policy: same-origin
+    cross-origin-opener-policy: same-origin
+  body:
+    type: json
+    content: |-
+      {
+        "id": 15,
+        "username": "riya_sharma",
+        "email": "riya.sharma2026@example.com",
+        "status": "active",
+        "first_name": "Riya",
+        "last_name": "Sharma",
+        "profiles": "standard",
+        "date_of_birth": "1999-08-14",
+        "gender": "female",
+        "nationality": "indian",
+        "image": null,
+        "blood_group": "B+",
+        "phone": "9812345670",
+        "permanent_address": "45 Model Town, Ludhiana, Punjab",
+        "current_address": "12 Sarabha Nagar, Ludhiana, Punjab",
+        "emergency_contact_name": "Anil Sharma",
+        "emergency_contact_number": "9876501234",
+        "emergency_contact_relationship": "Father"
+      }
+order: 1000
