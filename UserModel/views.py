@@ -26,11 +26,13 @@ from .serializers import(
 logger= logging.getLogger(__name__)
 
 class UserListCreateView(APIView):
+    authentication_classes=[]
+    permission_classes=[AllowAny]
 
     def get_permissions(self):
         if self.request.method=="POST":
             return[AllowAny()]
-        return [IsAuthenticated()]
+        return [AllowAny()]
 
     def get(self,request):
         users=User.objects.all().order_by('id')
@@ -49,19 +51,21 @@ class UserListCreateView(APIView):
         try:
             send_welcome_email(user)
         except Exception:
-            logger.exception("welcome email failed for user id=%S", user.pk)
+            logger.exception("welcome email failed for user id=%s", user.pk)
         return Response(serializer.data, status=status.HTTP_201_CREATED)
 
 
 class UserDetailView(APIView):
+    authentication_classes=[]
+    permission_classes=[AllowAny]
 
     def get_permissions(self):
         if self.request.method=="GET":
-            return [IsAuthenticated()]
+            return [AllowAny()]
         return [AllowAny()]
 
-    def get_object(self,request,pk):
-        return self.get_object(User, pk=pk)
+    def get_object(self,pk):
+        return get_object_or_404(User, pk=pk)
 
     def get(self,request,pk):
         user= self.get_object(pk)
@@ -235,6 +239,6 @@ class LoginView(APIView):
             {
                 "access": str(refresh.access_token),
                 "refresh": str(refresh),
-                "user": UserSerializer(user).data,
+                "user": UserSerializer(user,context={"request": request}).data,
             }
         )

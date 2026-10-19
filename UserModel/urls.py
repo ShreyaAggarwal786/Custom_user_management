@@ -10,15 +10,13 @@ from .views import (
     UserListCreateView,
     VerifyOTPView,
     LoginView,
-
-
     )
 
 
 
 urlpatterns= [
     path("users/",UserListCreateView.as_view()),
-    path("users/<int:pk>", UserDetailView.as_view()),
+    path("users/<int:pk>/", UserDetailView.as_view()),
     path("auth/login/", LoginView.as_view()),
     path("auth/send-otp/", SendOTPView.as_view()),
     path("auth/verify-otp/", VerifyOTPView.as_view()),
