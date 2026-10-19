@@ -1,9 +1,9 @@
 import logging
 
+from django.shortcuts import get_object_or_404
 from rest_framework.views  import APIView
-from rest_framework import status, viewsets
+from rest_framework import status
 from rest_framework.permissions import AllowAny, IsAuthenticated
-from .permissions import IsSelfOrAdmin
 from rest_framework.response import Response
 from rest_framework_simplejwt.tokens import RefreshToken
 
@@ -23,47 +23,74 @@ from .serializers import(
 )
 
 
-
-
-
-
 logger= logging.getLogger(__name__)
 
-class UserViewSet(viewsets.ModelViewSet):
-    queryset= User.objects.all().order_by('id')
+class UserListCreateView(APIView):
 
+    def get_permissions(self):
+        if self.request.method=="POST":
+            return[AllowAny()]
+        return [IsAuthenticated()]
 
+    def get(self,request):
+        users=User.objects.all().order_by('id')
+        serializer= UserSerializer(
+            users, many=True, context={"request":request}
+            )
+        return Response(serializer.data)
 
-    def get_serializer_class(self):
-        if self.action== "create":
-            return UserCreateSerializer
-        if self.action in ("update","partial_update"):
-            return UserUpdateSerializer
-        return UserSerializer
-
-    def perform_create(self, serializer):
+    def post(self, request):
+        serializer= UserCreateSerializer(
+            data= request.data, context={"request":request}
+        )
+        serializer.is_valid(raise_exception=True)
         user= serializer.save()
+
         try:
             send_welcome_email(user)
         except Exception:
-            logger.exception("welcome email failed for user id=%s", user.pk)
+            logger.exception("welcome email failed for user id=%S", user.pk)
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
 
-    def destroy(self, request, *args, **kwargs):
-        user= self.get_object()
-        user.status= User.Status.INACTIVE
-        user.save(update_fields=['status'])
-        return Response(
-            {"detail": "User deactivated"}, status=status.HTTP_200_OK
-        )
+
+class UserDetailView(APIView):
 
     def get_permissions(self):
-        if self.action == "create":
-            return [AllowAny()]
-        if self.action in ("update", "partial_update", "destroy"):
-            return [IsAuthenticated(), IsSelfOrAdmin()]
-        return [IsAuthenticated()]
+        if self.request.method=="GET":
+            return [IsAuthenticated()]
+        return [AllowAny()]
 
+    def get_object(self,request,pk):
+        return self.get_object(User, pk=pk)
 
+    def get(self,request,pk):
+        user= self.get_object(pk)
+        serializer= UserSerializer(user, context={"request": request})
+        return Response(serializer.data)
+
+    def put(self,request,pk):
+        return self._update(request,pk,partial=False)
+
+    def patch(self,request,pk):
+        return self._update(request,pk,partial=True)
+
+    def _update(self, request, pk, partial):
+        user= self.get_object(pk)
+        serializer= UserUpdateSerializer(
+            user, data=request.data, partial=partial, context={"request": request}
+        )
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(serializer.data)
+
+    def delete(self,request, pk):
+        user= self.get_object(pk)
+        user.status =User.Status.INACTIVE
+        user.save(update_fields=["status"])
+        return Response({"detail": "User Deactivated"}, status= status.HTTP_200_OK)
+    
+
+#OTP
 class SendOTPView(APIView):
     permission_classes = [AllowAny]
 
@@ -120,6 +147,8 @@ class VerifyOTPView(APIView):
 
         OTPService.verify(user, serializer.validated_data["otp"], OTP.Purpose.VERIFY)
         return Response({"detail": "OTP verified successfully."})
+
+#Forgot/ Reset password
 
 class ForgotPasswordView(APIView):
     permission_classes = [AllowAny]
@@ -178,6 +207,7 @@ class ResetPasswordView(APIView):
 
         return Response({"detail": "Password reset successfully."})  
 
+#Login
 
 class LoginView(APIView):
     permission_classes = [AllowAny]
@@ -188,7 +218,6 @@ class LoginView(APIView):
         data = serializer.validated_data
 
         user = User.objects.filter(email__iexact=data["email"]).first()
-          # DEBUG (baad mein delete karna)
         
         if user is None or not user.check_password(data["password"]):
             return Response(

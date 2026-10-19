@@ -19,7 +19,7 @@ class UserCreateSerializer(serializers.ModelSerializer):
         model= User
         fields= ['id','username','email','password','confirm_password',
                 'status']+ PROFILE_FIELDS
-        read_only_fields= ['id','status','profiles']
+        #read_only_fields= ['id','status','profiles']
 
     def validate_email(self, value):
         value=value.lower()
@@ -48,7 +48,7 @@ class UserUpdateSerializer(serializers.ModelSerializer):
     class Meta:
         model= User
         fields= ['id','username','email','status']+PROFILE_FIELDS
-        read_only_fields= ['id','status']
+        #read_only_fields= ['id']
 
 
     def validate_email(self,value):
@@ -57,12 +57,14 @@ class UserUpdateSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("A user with email already exists.")
         return value
 
-    def validate_profiles(self, value):
-        user = self.context["request"].user
-        is_admin = user.is_superuser or user.profiles == User.Profile.ADMINISTRATOR
-        if value != self.instance.profiles and not is_admin:
-            raise serializers.ValidationError("Only an administrator can change profiles.")
-        return value
+    # def validate_profiles(self, value):
+    #     user = self.context["request"].user
+    #     is_admin = user.is_authenticated and (
+    #         user.is_superuser or user.profiles == User.Profile.ADMINISTRATOR
+    #     )
+    #     if value != self.instance.profiles and not is_admin:
+    #         raise serializers.ValidationError("Only an administrator can change profiles.")
+    #     return value
 
     
 class LoginSerializer(serializers.Serializer):
