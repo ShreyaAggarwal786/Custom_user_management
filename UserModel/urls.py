@@ -10,6 +10,8 @@ from .views import (
     UserListCreateView,
     VerifyOTPView,
     LoginView,
+    ClientListCreateView,
+    ClientDetailView
     )
 
 
@@ -23,4 +25,6 @@ urlpatterns= [
     path("auth/forgot-password/", ForgotPasswordView.as_view()),
     path("auth/reset-password/", ResetPasswordView.as_view()),
     path("auth/token/refresh/", TokenRefreshView.as_view()),
+    path("client/",ClientListCreateView.as_view()),
+    path("client/<int:pk>/",ClientDetailView.as_view())
 ]

@@ -1,9 +1,10 @@
 $kind: http-request
-url: http://127.0.0.1:8000/api/users/12/
+url: http://127.0.0.1:8000/api/users/11/
 method: GET
+body:
+  type: json
+  content: ""
 auth:
-  type: bearer
-  credentials:
-    token: ""
+  type: noauth
 examples: .resources/user details.resources/examples
 order: 5000

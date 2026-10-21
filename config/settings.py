@@ -42,6 +42,7 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
     'rest_framework',
     'UserModel',
+    
 ]
 
 MIDDLEWARE = [
@@ -144,8 +145,8 @@ OTP_MAX_ATTEMPTS = 3
 
 REST_FRAMEWORK= {
     "DEFAULT_AUTHENTICATION_CLASSES" :(
-        "UserModel.authentication.ActiveStatusJWTAuthentication",
         "rest_framework.authentication.SessionAuthentication",
+        "rest_framework_simplejwt.authentication.JWTAuthentication",
     ),
     "DEFAULT_PERMISSION_CLASSES":(
         "rest_framework.permissions.IsAuthenticated",
@@ -155,18 +156,10 @@ REST_FRAMEWORK= {
 from datetime import timedelta
 
 SIMPLE_JWT= {
-    "ACCESS_TOKEN_LIFETIME": timedelta(minutes=30),
-    "REFRESH_TOKEN_LIFETIME": timedelta(days=1),
+    "ACCESS_TOKEN_LIFETIME": timedelta(minutes=5),
+    "REFRESH_TOKEN_LIFETIME": timedelta(hours=1),
 }
 
-# Email
-# https://docs.djangoproject.com/en/6.1/topics/email/#topic-email-configuration
 
-# MAILERS = {
-#     'default': {
-#         'BACKEND': 'django.core.mail.backends.console.EmailBackend',
-#     },
-# }
 AUTH_USER_MODEL= "UserModel.User"
 
-# DEFAULT_FROM_EMAIL= "abc@example.com"

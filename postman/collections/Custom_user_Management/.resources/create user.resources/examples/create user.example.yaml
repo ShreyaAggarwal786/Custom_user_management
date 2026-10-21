@@ -3,42 +3,34 @@ request:
   url: " http://127.0.0.1:8000/api/users/"
   method: POST
   body:
-    type: json
-    content: "{\r
-
-      \    \"username\": \"riya_sharma\",\r
-
-      \    \"email\": \"riya.sharma2026@example.com\",\r
-
-      \    \"password\": \"RiyaPass#2026\",\r
-
-      \    \"confirm_password\": \"RiyaPass#2026\",\r
-
-      \    \"first_name\": \"Riya\",\r
-
-      \    \"last_name\": \"Sharma\",\r
-
-      \    \"date_of_birth\": \"1999-08-14\",\r
-
-      \    \"gender\": \"female\",\r
-
-      \    \"nationality\": \"indian\",\r
-
-      \    \"blood_group\": \"B+\",\r
-
-      \    \"phone\": \"9812345670\",\r
-
-      \    \"permanent_address\": \"45 Model Town, Ludhiana, Punjab\",\r
-
-      \    \"current_address\": \"12 Sarabha Nagar, Ludhiana, Punjab\",\r
-
-      \    \"emergency_contact_name\": \"Anil Sharma\",\r
-
-      \    \"emergency_contact_number\": \"9876501234\",\r
-
-      \    \"emergency_contact_relationship\": \"Father\"\r
-
-      }"
+    type: formdata
+    content:
+      - type: text
+        key: username
+        value: riya
+        description: ""
+        disabled: false
+      - type: text
+        key: email
+        value: riya124@gmail.com
+        description: ""
+        disabled: false
+      - type: text
+        key: password
+        value: AS@user123
+        description: ""
+        disabled: false
+      - type: text
+        key: confirm_password
+        value: AS@user123
+        description: ""
+        disabled: false
+      - type: file
+        key: image
+        src:
+          - /C:/Users/shrey/OneDrive/Pictures/Screenshots/Screenshot 2026-10-12 164840.png
+        description: ""
+        disabled: false
 response:
   statusCode: 201
   statusText: Created

@@ -1,7 +1,9 @@
+import re
 from django.contrib.auth.password_validation import validate_password
 from rest_framework import serializers
 
 from .models import User
+from .models import Client
 
 PROFILE_FIELDS= [
     'first_name','last_name','profiles','date_of_birth','gender',
@@ -99,5 +101,39 @@ class ResetPasswordSerializer(serializers.Serializer):
         return attrs
 
 
+
+
+
+class ClientSerializer(serializers.ModelSerializer):
+    created_by= serializers.EmailField(source="created_by.email", read_only=True)
+    modified_by= serializers.EmailField(source="modified_by.email", read_only=True)
+
+
+
+    class Meta:
+        model= Client
+        fields=[
+            'id','first_name',
+            'last_name','email','contact_number',
+            'country','address','status','created_by',
+            'created_at','modified_by','modified_at'
+        ]
+        read_only_fields=[
+            'id',
+            'created_at',
+            'modified_at'    
+        ]
+
+    def validate_email(self,value):
+        value = value.lower()
+        qs= Client.objects.filter(email__iexact=value)
+        if self.instance:
+            qs= qs.exclude(pk= self.instance.pk)
+        if qs.exists():
+            raise serializers.ValidationError("A client with this  email already exists.")
+        return value
+
+
+    
 
 

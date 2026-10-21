@@ -1,50 +1,10 @@
 $kind: http-request
-url: http://127.0.0.1:8000/api/users/12/
+url: http://127.0.0.1:8000/api/users/16/
 method: PATCH
 body:
   type: json
-  content: "{\r
-
-    \    \"id\": 12,\r
-
-    \    \"username\": \"chahat\",\r
-
-    \    \"email\": \"user@example.com\",\r
-
-    \    \"status\": \"active\",\r
-
-    \    \"first_name\": \"\",\r
-
-    \    \"last_name\": \"\",\r
-
-    \    \"profiles\": \"standard\",\r
-
-    \    \"date_of_birth\": \"2001-06-08\",\r
-
-    \    \"gender\": \"\",\r
-
-    \    \"nationality\": \"\",\r
-
-    \    \"image\": null,\r
-
-    \    \"blood_group\": \"\",\r
-
-    \    \"phone\": \"\",\r
-
-    \    \"permanent_address\": \"\",\r
-
-    \    \"current_address\": \"\",\r
-
-    \    \"emergency_contact_name\": \"\",\r
-
-    \    \"emergency_contact_number\": \"\",\r
-
-    \    \"emergency_contact_relationship\": \"\"\r
-
-    }"
+  content: '    {"email": "user@yopgmail.com"}'
 auth:
-  type: bearer
-  credentials:
-    token: ""
+  type: noauth
 examples: .resources/update user details.resources/examples
 order: 6000

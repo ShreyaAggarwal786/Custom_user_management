@@ -3,6 +3,6 @@ url: http://127.0.0.1:8000/api/auth/send-otp/
 method: POST
 body:
   type: json
-  content: '{"email":"user@example.com"}'
+  content: '{"email":"riya124@gmail.com"}'
 examples: .resources/send-otp.resources/examples
 order: 7000

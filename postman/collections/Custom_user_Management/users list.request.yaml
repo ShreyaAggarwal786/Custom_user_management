@@ -1,5 +1,7 @@
 $kind: http-request
-url: ""
+url: http://127.0.0.1:8000/api/users/
 method: GET
+auth:
+  type: noauth
 examples: .resources/users list.resources/examples
 order: 3000

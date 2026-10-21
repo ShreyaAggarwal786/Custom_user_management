@@ -5,9 +5,9 @@ body:
   type: json
   content: "{\r
 
-    \    \"email\": \"user@example.com\",\r
+    \     \"email\": \"hsaini1709@gmail.com\",\r
 
-    \    \"password\": \"SB@user09\"\r
+    \    \"password\": \"himanshi@user789\"\r
 
     }"
 examples: .resources/Login.resources/examples

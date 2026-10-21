@@ -87,10 +87,44 @@ class OTP(models.Model):
 
 
 
+class Client(models.Model):
+    class Status(models.TextChoices):
+        ACTIVE="active","Active"
+        INACTIVE="inactive","Inactive"
 
 
+    first_name= models.CharField(max_length=100)
+    last_name= models.CharField(max_length=100)
+    email= models.EmailField(max_length=254, unique=True)
+    contact_number=models.CharField(max_length=15)
+    address=models.TextField()
+    country= models.CharField(max_length=100)
+    status= models.CharField(max_length=10, choices= Status.choices, default=Status.ACTIVE)
 
 
+    created_by= models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete= models.PROTECT,
+        related_name="clients_created"
+    )
 
 
+    # created_by=models.CharField(max_length=254, null=True,blank=True)
+    created_at=models.DateTimeField(auto_now_add=True)
+
+    modified_by= models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        related_name="clients_modified"
+    )
+
+    # modified_by= models.CharField(max_length=254,null=True.blank=True)
+    modified_at=models.DateTimeField(auto_now=True)
+
+
+    class Meta:
+        ordering= ["-id"]
+
+    def __str__(self):
+        return f"{self.first_name} {self.last_name}"
 

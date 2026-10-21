@@ -5,37 +5,27 @@ body:
   type: json
   content: "{\r
 
-    \    \"username\": \"riya_sharma\",\r
+    \    \"username\": \"shery\",\r
 
-    \    \"email\": \"riya.sharma2026@example.com\",\r
+    \    \"email\": \"shreya20924@gmail.com\",\r
 
-    \    \"password\": \"RiyaPass#2026\",\r
+    \    \"password\": \"SB@user09\",\r
 
-    \    \"confirm_password\": \"RiyaPass#2026\",\r
+    \    \"confirm_password\": \"SB@user09\",\r
 
-    \    \"first_name\": \"Riya\",\r
+    \    \"first_name\": \"Test\",\r
 
-    \    \"last_name\": \"Sharma\",\r
-
-    \    \"date_of_birth\": \"1999-08-14\",\r
-
-    \    \"gender\": \"female\",\r
-
-    \    \"nationality\": \"indian\",\r
+    \    \"last_name\": \"User\",\r
 
     \    \"blood_group\": \"B+\",\r
 
-    \    \"phone\": \"9812345670\",\r
+    \    \"date_of_birth\": \"2000-05-20\",\r
 
-    \    \"permanent_address\": \"45 Model Town, Ludhiana, Punjab\",\r
+    \    \"gender\": \"female\",\r
 
-    \    \"current_address\": \"12 Sarabha Nagar, Ludhiana, Punjab\",\r
+    \    \"nationality\": \"indian\"\r
 
-    \    \"emergency_contact_name\": \"Anil Sharma\",\r
-
-    \    \"emergency_contact_number\": \"9876501234\",\r
-
-    \    \"emergency_contact_relationship\": \"Father\"\r
+    \    \r
 
     }"
 examples: .resources/create user.resources/examples
