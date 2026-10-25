@@ -59,7 +59,7 @@ DRF_Assignment/
 1. Clone the repository
 
 ```
-git clone https://github.com/YOUR_USERNAME/YOUR_REPO_NAME.git
+git clone https://github.com/ShreyaAggarwal786/Custom_user_management.git
 cd YOUR_REPO_NAME
 ```
 
