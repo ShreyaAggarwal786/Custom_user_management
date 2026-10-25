@@ -1,17 +1,19 @@
 import re
 from django.contrib.auth.password_validation import validate_password
 from rest_framework import serializers
+from django.utils import timezone
 
 from .models import User
 from .models import Client
 
-PROFILE_FIELDS= [
-    'first_name','last_name','profiles','date_of_birth','gender',
-    'nationality','image','blood_group','phone',
-    'permanent_address','current_address',
+USER_FIELDS= [
+    'id','username','email','first_name','last_name',
+    'profiles','date_of_birth','gender','nationality','image',
+    'blood_group','phone','permanent_address','current_address',
     'emergency_contact_name','emergency_contact_number',
-    'emergency_contact_relationship',
+    'emergency_contact_relationship','status'
 ]
+
 
 class UserCreateSerializer(serializers.ModelSerializer):
     password= serializers.CharField(write_only=True, validators=[validate_password])
@@ -19,17 +21,23 @@ class UserCreateSerializer(serializers.ModelSerializer):
 
     class Meta:
         model= User
-        fields= ['id','username','email','password','confirm_password',
-                'status']+ PROFILE_FIELDS
-        #read_only_fields= ['id','status','profiles']
+        fields= USER_FIELDS+ ['password','confirm_password']
+        read_only_fields= ['id','status','profiles']
 
     def validate_email(self, value):
+        if not value:
+            return value
         value=value.lower()
         if User.objects.filter(email__iexact=value).exists():
             raise serializers.ValidationError("A user with this  email already exists.")
         return value
 
     def validate(self,attrs):
+        for field in ["username", "email"]:
+            value=attrs.get(field)
+            if not value or not str(value).strip():
+                raise serializers.ValidationError({field: f"{field} is required."})
+            
         if attrs['password']!= attrs['confirm_password']:
             raise serializers.ValidationError(
                 {"confirm_password":"passwords do not match."}
@@ -38,35 +46,38 @@ class UserCreateSerializer(serializers.ModelSerializer):
 
     def create(self,validated_data):
         validated_data.pop("confirm_password")
-        return User.objects.create_user(**validated_data)
+        self.password= self.validated_data.pop("password")
+        user= User(**validated_data)
+        user.set_password(self.password)
+        user.save()
+        return User
 
 class UserSerializer(serializers.ModelSerializer):
     class Meta:
         model=User
-        fields=['id','username','email','status']+ PROFILE_FIELDS
-        read_only_fields= fields
+        fields= USER_FIELDS
+        read_only_fields= USER_FIELDS
 
 class UserUpdateSerializer(serializers.ModelSerializer):
     class Meta:
         model= User
-        fields= ['id','username','email','status']+PROFILE_FIELDS
-        #read_only_fields= ['id']
+        fields= USER_FIELDS
+        read_only_fields= ['id']
 
 
     def validate_email(self,value):
+        if not value:
+            return value
         value=value.lower()
         if User.objects.filter(email__iexact=value).exclude(pk=self.instance.pk).exists():
-            raise serializers.ValidationError("A user with email already exists.")
+            raise serializers.ValidationError("A user with this email already exists.")
         return value
 
-    # def validate_profiles(self, value):
-    #     user = self.context["request"].user
-    #     is_admin = user.is_authenticated and (
-    #         user.is_superuser or user.profiles == User.Profile.ADMINISTRATOR
-    #     )
-    #     if value != self.instance.profiles and not is_admin:
-    #         raise serializers.ValidationError("Only an administrator can change profiles.")
-    #     return value
+    def validate(self, attrs):
+        for field in["username","email"]:
+            if field in attrs and (not attrs[field] or not str(attrs[field]).strip()):
+                raise serializers.ValidationError({field: f"{field} cannot be empty."})
+        return attrs
 
     
 class LoginSerializer(serializers.Serializer):
@@ -103,11 +114,9 @@ class ResetPasswordSerializer(serializers.Serializer):
 
 
 
-
 class ClientSerializer(serializers.ModelSerializer):
     created_by= serializers.EmailField(source="created_by.email", read_only=True)
     modified_by= serializers.EmailField(source="modified_by.email", read_only=True)
-
 
 
     class Meta:
@@ -119,19 +128,29 @@ class ClientSerializer(serializers.ModelSerializer):
             'created_at','modified_by','modified_at'
         ]
         read_only_fields=[
-            'id',
-            'created_at',
-            'modified_at'    
+            'id', 'created_at', 'modified_at'    
         ]
-
+        
     def validate_email(self,value):
         value = value.lower()
-        qs= Client.objects.filter(email__iexact=value)
+        clients= Client.objects.filter(email__iexact=value)
         if self.instance:
-            qs= qs.exclude(pk= self.instance.pk)
-        if qs.exists():
+            clients= clients.exclude(pk= self.instance.pk)
+        if clients.exists():
             raise serializers.ValidationError("A client with this  email already exists.")
         return value
+
+    def validate(self,attrs):
+        required_fields= ["first_name", "last_name", "contact_number", "address", "country"]
+
+        for field in required_fields:
+            if self.instance is not None and field not in attrs:
+                continue
+            value= attrs.get(field)
+            if not value or not str(value).strip():
+                raise serializers.ValidationError({field: f"{field} is required."})
+        return attrs
+
 
 
     

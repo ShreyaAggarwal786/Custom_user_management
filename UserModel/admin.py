@@ -1,7 +1,7 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin
 
-from .models import OTP, User
+from .models import  User
 
 @admin.register(User)
 class CustomUserAdmin(UserAdmin):
@@ -29,8 +29,3 @@ class CustomUserAdmin(UserAdmin):
     )
 
 
-@admin.register(OTP)
-class OTPAdmin(admin.ModelAdmin):
-    list_display=('id','user','purpose','is_used','attempts','created_at','expires_at')
-    list_filter= ('purpose','is_used')
-    readonly_fields= ('created_at',)

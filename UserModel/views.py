@@ -2,30 +2,26 @@ import logging
 
 from django.shortcuts import get_object_or_404
 from django.conf import settings
-from django.core.mail import send_mail
 from rest_framework.views  import APIView
-from rest_framework import status, serializers
+from rest_framework import status
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
+from rest_framework.exceptions import ValidationError
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework.pagination import PageNumberPagination
 
-from .models import  OTP, User, Client
+from .models import  User, Client
 from .serializers import(
-    UserCreateSerializer,
-    UserSerializer,
-    UserUpdateSerializer,
-    ForgotPasswordSerializer,
-    ResetPasswordSerializer,
-    SendOTPSerializer,
-    VerifyOTPSerializer,
-    LoginSerializer,
+    UserCreateSerializer,UserSerializer,UserUpdateSerializer,
+    ForgotPasswordSerializer,ResetPasswordSerializer,
+    SendOTPSerializer,VerifyOTPSerializer,LoginSerializer,
     ClientSerializer,
 )
 
-
+from .utils.otp import(PASSWORD_RESET, VERIFY, send_otp, send_welcome_email, verify_otp,)
 
 logger= logging.getLogger(__name__)
+
 
 class Pagination(PageNumberPagination):
     page_size=2
@@ -33,56 +29,8 @@ class Pagination(PageNumberPagination):
     max_page_size=10
 
 
-def send_welcome_email(user,otp):
-    if otp.purpose== OTP.Purpose.PASSWORD_RESET:
-        subject="password reset OTP"
-        reason="Reason your password"
-    else:
-        subject="Your Verification OTP"
-        reason="Verify your account"
-
-    send_mail(
-        subject,
-        f"Hi {user.first_name or user.username},\n\n"
-        f"Use this OTP to {reason}: {otp.code}\n\n"
-        f"It expires in {settings.OTP_EXPIRY_MINUTES} minutes. "
-        "If you did not request this, you can ignore this email.",
-        settings.DEFAULT_FROM_EMAIL,
-        [user.email],
-        fail_silently=False,
-    )
-
-def create_otp(user,purpose):
-    OTP.objects.filter(user=user, purpose=purpose, is_used=False).update(is_used=True)
-    return OTP.objects.create(user=user, purpose=purpose)
-
-
-def verify_otp(user, code,purpose):
-    otp=(
-        OTP.objects.filter(user=user,purpose=purpose,is_used=False)
-        .order_by("-id").first()
-    )
-    if otp is None or otp.is_expired():
-        raise serializers.ValidationError("OTP not found or expired. Request a new one.")
-    if otp.attempts >= settings.OTP_MAX_ATTEMPTS:
-        raise serializers.ValidationError("Too many wrong attempts. Request a new OTP.")
-    if otp.code != str(code):
-        otp.attempts += 1
-        otp.save(update_fields=["attempts"])
-        raise serializers.ValidationError("Incorrect OTP.")
-
-    otp.is_used = True
-    otp.save(update_fields=["is_used"])
-
-
-
 class UserListCreateView(APIView):
     permission_classes=[AllowAny]
-
-    def get_permissions(self):
-        if self.request.method=="POST":
-            return[AllowAny()]
-        return [AllowAny()]
 
     def get(self,request):
         users=User.objects.all().order_by('id')
@@ -94,9 +42,7 @@ class UserListCreateView(APIView):
         return paginator.get_paginated_response(serializer.data)
 
     def post(self, request):
-        serializer= UserCreateSerializer(
-            data= request.data, context={"request":request}
-        )
+        serializer= UserCreateSerializer(data= request.data, context={"request":request})
         serializer.is_valid(raise_exception=True)
         user= serializer.save()
 
@@ -150,9 +96,7 @@ class SendOTPView(APIView):
         serializer.is_valid(raise_exception=True)
 
 
-        user = User.objects.filter(
-            email__iexact=serializer.validated_data["email"]
-            ).first()
+        user = User.objects.filter(email__iexact=serializer.validated_data["email"]).first()
         if user is None:
             return Response(
                 {"detail": "No such user exists."},
@@ -164,11 +108,10 @@ class SendOTPView(APIView):
                 {"detail": "This account is inactive."},
                 status=status.HTTP_403_FORBIDDEN,
             )
-
-        otp = create_otp(user, OTP.Purpose.VERIFY)
-
         try:
-            send_mail(user, otp)
+            send_otp(user, VERIFY)
+        except ValidationError:
+            raise
         except Exception:
             logger.exception("OTP email failed for user id=%s", user.pk)
             return Response(
@@ -197,7 +140,7 @@ class VerifyOTPView(APIView):
                 status=status.HTTP_404_NOT_FOUND,
             )
 
-        verify_otp(user, serializer.validated_data["otp"], OTP.Purpose.VERIFY)
+        verify_otp(user, serializer.validated_data["otp"],VERIFY) 
         return Response({"detail": "OTP verified successfully."})
 
 #Forgot/ Reset password
@@ -209,9 +152,7 @@ class ForgotPasswordView(APIView):
         serializer = ForgotPasswordSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
-        user = User.objects.filter(
-            email__iexact=serializer.validated_data["email"]
-        ).first()
+        user = User.objects.filter(email__iexact=serializer.validated_data["email"]).first()
         if user is None:
             return Response(
                 {"detail": "No such user exists."},
@@ -223,10 +164,8 @@ class ForgotPasswordView(APIView):
                 status=status.HTTP_403_FORBIDDEN,
             )
 
-        otp = create_otp(user, OTP.Purpose.PASSWORD_RESET)
-
         try:
-            send_mail(user, otp)
+            send_otp(user, PASSWORD_RESET)
         except Exception:
             logger.exception("Reset OTP email failed for user id=%s", user.pk)
             return Response(
@@ -252,7 +191,7 @@ class ResetPasswordView(APIView):
                 status=status.HTTP_404_NOT_FOUND,
             )
 
-        verify_otp(user, data["otp"], OTP.Purpose.PASSWORD_RESET)
+        verify_otp(user, data["otp"], PASSWORD_RESET)
 
         user.set_password(data["new_password"])
         user.save(update_fields=["password"])
