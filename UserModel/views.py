@@ -18,7 +18,7 @@ from .serializers import(
     ClientSerializer,
 )
 
-from .utils.otp import(PASSWORD_RESET, VERIFY, send_otp, send_welcome_email, verify_otp,)
+from .utils import(PASSWORD_RESET, VERIFY, send_otp, send_welcome_email, verify_otp,)
 
 logger= logging.getLogger(__name__)
 

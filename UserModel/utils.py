@@ -8,7 +8,7 @@ from django.db import transaction
 from django.utils import timezone
 from rest_framework.exceptions import ValidationError
 
-from . .models import User
+from .models import User
 
 
 logger= logging.getLogger(__name__)
