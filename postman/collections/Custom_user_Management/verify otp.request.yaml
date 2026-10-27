@@ -1,0 +1,5 @@
+$kind: http-request
+url: http://127.0.0.1:8000/api/auth/verify-otp/
+method: POST
+examples: .resources/verify otp.resources/examples
+order: 8000

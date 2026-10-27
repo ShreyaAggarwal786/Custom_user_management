@@ -1,0 +1,31 @@
+$kind: http-request
+url: " http://127.0.0.1:8000/api/users/"
+method: POST
+body:
+  type: json
+  content: "{\r
+
+    \    \"username\": \"shery\",\r
+
+    \    \"email\": \"shreya20924@gmail.com\",\r
+
+    \    \"password\": \"SB@user09\",\r
+
+    \    \"confirm_password\": \"SB@user09\",\r
+
+    \    \"first_name\": \"Test\",\r
+
+    \    \"last_name\": \"User\",\r
+
+    \    \"blood_group\": \"B+\",\r
+
+    \    \"date_of_birth\": \"2000-05-20\",\r
+
+    \    \"gender\": \"female\",\r
+
+    \    \"nationality\": \"indian\"\r
+
+    \    \r
+
+    }"
+order: 2000

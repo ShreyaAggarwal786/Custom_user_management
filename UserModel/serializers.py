@@ -1,10 +1,6 @@
-import re
-from django.contrib.auth.password_validation import validate_password
 from rest_framework import serializers
-from django.utils import timezone
 
-from .models import User
-from .models import Client
+from .models import User, Client, Project
 
 USER_FIELDS= [
     'id','username','email','first_name','last_name',
@@ -16,41 +12,28 @@ USER_FIELDS= [
 
 
 class UserCreateSerializer(serializers.ModelSerializer):
-    password= serializers.CharField(write_only=True, validators=[validate_password])
-    confirm_password=serializers.CharField(write_only=True)
+    email= serializers.EmailField()
+    password= serializers.CharField(write_only=True, required= False)
 
     class Meta:
         model= User
-        fields= USER_FIELDS+ ['password','confirm_password']
-        read_only_fields= ['id','status','profiles']
+        fields= USER_FIELDS+ ['password']
+        read_only_fields= ['id','status']
 
     def validate_email(self, value):
-        if not value:
-            return value
         value=value.lower()
         if User.objects.filter(email__iexact=value).exists():
-            raise serializers.ValidationError("A user with this  email already exists.")
+            raise serializers.ValidationError("A user with this email already exists.")
         return value
 
-    def validate(self,attrs):
-        for field in ["username", "email"]:
-            value=attrs.get(field)
-            if not value or not str(value).strip():
-                raise serializers.ValidationError({field: f"{field} is required."})
-            
-        if attrs['password']!= attrs['confirm_password']:
-            raise serializers.ValidationError(
-                {"confirm_password":"passwords do not match."}
-            )
-        return attrs
-
     def create(self,validated_data):
-        validated_data.pop("confirm_password")
-        self.password= self.validated_data.pop("password")
+        password= validated_data.pop("password", None)
+        if not password:
+            password= validated_data['email'].split("@")[0]+"@123"
         user= User(**validated_data)
-        user.set_password(self.password)
+        user.set_password(password)
         user.save()
-        return User
+        return user
 
 class UserSerializer(serializers.ModelSerializer):
     class Meta:
@@ -74,9 +57,8 @@ class UserUpdateSerializer(serializers.ModelSerializer):
         return value
 
     def validate(self, attrs):
-        for field in["username","email"]:
-            if field in attrs and (not attrs[field] or not str(attrs[field]).strip()):
-                raise serializers.ValidationError({field: f"{field} cannot be empty."})
+        if "email" in attrs and not attrs["email"] :
+            raise serializers.ValidationError({"email": "email cannot be empty."})
         return attrs
 
     
@@ -101,24 +83,13 @@ class ForgotPasswordSerializer(serializers.Serializer):
 class ResetPasswordSerializer(serializers.Serializer):
     email = serializers.EmailField()
     otp = serializers.CharField(max_length=6)
-    new_password = serializers.CharField(write_only=True, validators=[validate_password])
-    confirm_password = serializers.CharField(write_only=True)
+    new_password = serializers.CharField(write_only=True)
 
-    def validate(self, attrs):
-        if attrs["new_password"] != attrs["confirm_password"]:
-            raise serializers.ValidationError(
-                {"confirm_password": "Passwords do not match."}
-            )
-        return attrs
 
 
 
 
 class ClientSerializer(serializers.ModelSerializer):
-    created_by= serializers.EmailField(source="created_by.email", read_only=True)
-    modified_by= serializers.EmailField(source="modified_by.email", read_only=True)
-
-
     class Meta:
         model= Client
         fields=[
@@ -128,7 +99,7 @@ class ClientSerializer(serializers.ModelSerializer):
             'created_at','modified_by','modified_at'
         ]
         read_only_fields=[
-            'id', 'created_at', 'modified_at'    
+            'id', 'created_by', 'created_at', 'modified_by', 'modified_at'    
         ]
         
     def validate_email(self,value):
@@ -154,5 +125,47 @@ class ClientSerializer(serializers.ModelSerializer):
 
 
     
+#project 
+
+class ProjectSerializer(serializers.ModelSerializer):
+    class Meta:
+        model= Project
+        fields=[
+            'id','project_title','project_type',
+            'project_status','date_of_completion','client',
+            'manager','created_by','created_at','modified_by','modified_at'
+        ]
+
+        read_only_fields=['id','created_by','created_at','modified_by','modified_at']
+
+    # def validate_project_type(self,value):
+    #     if not value:
+    #         return value
+    #     value= value.strip()
+    #     for option, _label in Project.Project_Type:
+    #         if value.casefold()== option.casefold():
+    #             return option
+    #     return value
+    
+    def validate(self,attrs):
+        required_fields= ['project_title','project_type','client','manager']
+        for field in required_fields:
+            if self.instance is not None and field not in attrs:
+                continue
+            value= attrs.get(field)
+            if value is None:
+                raise serializers.ValidationError({field: f'{field} is required.'})
+            if field in ['project_title','project_type'] and not value.strip():
+                raise serializers.ValidationError({field: f'{field} is required.'})
+        client= attrs.get('client')
+        if client is not None and client.status != 'active':
+            raise serializers.ValidationError({'client': 'client is not active.'})
+
+        manager= attrs.get('manager')
+        if manager is not None and manager.status != 'active':
+            raise serializers.ValidationError({'manager': 'manager is not active.'})
+
+        return attrs
+
 
 

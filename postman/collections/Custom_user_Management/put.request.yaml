@@ -1,0 +1,45 @@
+$kind: http-request
+url: http://127.0.0.1:8000/api/users/10/
+method: PUT
+body:
+  type: json
+  content: "{\r
+
+    \    \"id\": 7,\r
+
+    \    \"username\": \"himanshi\",\r
+
+    \    \"email\": \"hsaini1709@gmail.com\",\r
+
+    \    \"status\": \"active\",\r
+
+    \    \"first_name\": \"himanshi\",\r
+
+    \    \"last_name\": \"sa\",\r
+
+    \    \"profiles\": \"developer\",\r
+
+    \    \"date_of_birth\": \"2026-10-06\",\r
+
+    \    \"gender\": \"female\",\r
+
+    \    \"nationality\": \"india\",\r
+
+    \    \"image\": null,\r
+
+    \    \"blood_group\": \"AB+\",\r
+
+    \    \"phone\": \"\\\"1234567890\\\"\",\r
+
+    \    \"permanent_address\": \"\\\"strings\\\"\",\r
+
+    \    \"current_address\": \"\\\"strings@\\\"\",\r
+
+    \    \"emergency_contact_name\": \"\\\"muskan\\\"\",\r
+
+    \    \"emergency_contact_number\": \"\\\"8708979448\\\"\",\r
+
+    \    \"emergency_contact_relationship\": \"\\\"sis\\\"\"\r
+
+    }"
+order: 12000

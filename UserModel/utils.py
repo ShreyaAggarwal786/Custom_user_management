@@ -51,46 +51,44 @@ def send_otp(user,purpose):
     with transaction.atomic():
         locked= User.objects.select_for_update().get(pk=user.pk)
 
-        if purpose== VERIFY:
-            if locked.verify_blocked_until and now< locked.verify_blocked_until:
+        
+        if locked.otp_blocked_until and now< locked.otp_blocked_until:
+            blocked= True
+        else:
+            if(
+                locked.otp_blocked_until
+                or locked.otp_window_start is None
+                or now >= locked.otp_window_start + window
+            ):
+                locked.otp_request_count=0
+                locked.otp_window_start= now
+                locked.otp_blocked_until= None
+
+            if locked.otp_request_count>= OTP_REQUEST_LIMIT:
+                locked.otp_blocked_until = now+ window
+                locked.save()
                 blocked= True
             else:
-                if(
-                    locked.verify_blocked_until
-                    or locked.verify_window_start is None
-                    or now >= locked.verify_window_start + window
-                ):
-                    locked.verify_request_count=0
-                    locked.verify_window_start= now
-                    locked.verify_blocked_until= None
+                locked.otp_request_count +=1
+                locked.otp_code= generate_code()
+                locked.otp_purpose= purpose
+                locked.otp_expires_at= now+timedelta(minutes=settings.OTP_EXPIRY_MINUTES)
+                locked.otp_attempts= 0
+                locked.save()
 
-                if locked.verify_request_count>= OTP_REQUEST_LIMIT:
-                    locked.verify_blocked_until = now+ window
-                    locked.save()
-                    blocked= True
-                else:
-                    locked.verify_request_count +=1
-
-    if not blocked:
-        locked.otp_code= generate_code()
-        locked.otp_purpose= purpose
-        locked.otp_expires_at= now+timedelta(minutes=settings.OTP_EXPIRY_MINUTES)
-        locked.otp_attempts= 0
-        locked.save()
-
-        subject= (
-            "Your verification code" if purpose == VERIFY
-            else "Your password reset code"
-        )
-        _mail(
-            locked,
-            subject,
-            f"Your OTP is{locked.otp_code}."
-            f"It expires in{settings.OTP_EXPIRY_MINUTES}minutes.",
-        )
+                subject= (
+                    "Your verification code" if purpose == VERIFY
+                    else "Your password reset code"
+                )
+                _mail(
+                    locked,
+                    subject,
+                    f"Your OTP is{locked.otp_code}."
+                    f"It expires in{settings.OTP_EXPIRY_MINUTES}minutes.",
+                )
         
     if blocked:
-        retry_time= timezone.localtime(locked.verify_blocked_until).strftime(
+        retry_time= timezone.localtime(locked.otp_blocked_until).strftime(
             "%d %b %Y, %I:%M %p"
         )
         raise ValidationError({

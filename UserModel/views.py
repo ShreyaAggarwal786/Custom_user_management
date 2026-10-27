@@ -1,5 +1,3 @@
-import logging
-
 from django.shortcuts import get_object_or_404
 from django.conf import settings
 from rest_framework.views  import APIView
@@ -10,17 +8,15 @@ from rest_framework.exceptions import ValidationError
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework.pagination import PageNumberPagination
 
-from .models import  User, Client
+from .models import  User, Client, Project
 from .serializers import(
     UserCreateSerializer,UserSerializer,UserUpdateSerializer,
     ForgotPasswordSerializer,ResetPasswordSerializer,
     SendOTPSerializer,VerifyOTPSerializer,LoginSerializer,
-    ClientSerializer,
+    ClientSerializer,ProjectSerializer,
 )
 
 from .utils import(PASSWORD_RESET, VERIFY, send_otp, send_welcome_email, verify_otp,)
-
-logger= logging.getLogger(__name__)
 
 
 class Pagination(PageNumberPagination):
@@ -49,7 +45,7 @@ class UserListCreateView(APIView):
         try:
             send_welcome_email(user)
         except Exception:
-            logger.exception("welcome email failed for user id=%s", user.pk)
+            print("Welcome email failed")
         return Response(serializer.data, status=status.HTTP_201_CREATED)
 
 
@@ -57,22 +53,22 @@ class UserDetailView(APIView):
     permission_classes=[AllowAny]
 
 
-    def get_object(self,pk):
-        return get_object_or_404(User, pk=pk)
+    def get_object(self,id):
+        return get_object_or_404(User, pk=id)
 
-    def get(self,request,pk):
-        user= self.get_object(pk)
+    def get(self,request,id):
+        user= self.get_object(id)
         serializer= UserSerializer(user, context={"request": request})
         return Response(serializer.data)
 
-    def put(self,request,pk):
-        return self._update(request,pk,partial=False)
+    def put(self,request,id):
+        return self._update(request,id,partial=False)
 
-    def patch(self,request,pk):
-        return self._update(request,pk,partial=True)
+    def patch(self,request,id):
+        return self._update(request,id,partial=True)
 
-    def _update(self, request, pk, partial):
-        user= self.get_object(pk)
+    def _update(self, request, id, partial):
+        user= self.get_object(id)
         serializer= UserUpdateSerializer(
             user, data=request.data, partial=partial, context={"request": request}
         )
@@ -80,8 +76,8 @@ class UserDetailView(APIView):
         serializer.save()
         return Response(serializer.data)
 
-    def delete(self,request, pk):
-        user= self.get_object(pk)
+    def delete(self,request, id):
+        user= self.get_object(id)
         user.status =User.Status.INACTIVE
         user.save(update_fields=["status"])
         return Response({"detail": "User Deactivated"}, status= status.HTTP_200_OK)
@@ -113,7 +109,6 @@ class SendOTPView(APIView):
         except ValidationError:
             raise
         except Exception:
-            logger.exception("OTP email failed for user id=%s", user.pk)
             return Response(
                 {"detail": "Could not send OTP email. Please try again later."},
                 status=status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -166,8 +161,9 @@ class ForgotPasswordView(APIView):
 
         try:
             send_otp(user, PASSWORD_RESET)
+        except ValidationError:
+            raise
         except Exception:
-            logger.exception("Reset OTP email failed for user id=%s", user.pk)
             return Response(
                 {"detail": "Could not send OTP email. Please try again later."},
                 status=status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -255,22 +251,22 @@ class ClientListCreateView(APIView):
 class ClientDetailView(APIView):
     permission_classes=[IsAuthenticated]
 
-    def get_object(self,pk):
-        return get_object_or_404(Client,pk=pk)
+    def get_object(self,id):
+        return get_object_or_404(Client,pk=id)
 
-    def get(self,request,pk):
-        client=self.get_object(pk)
+    def get(self,request,id):
+        client=self.get_object(id)
         serializer= ClientSerializer(client, context= {"request": request})
         return Response(serializer.data)
 
-    def put(self,request,pk):
-        return self._update(request, pk, partial=False)
+    def put(self,request,id):
+        return self._update(request, id, partial=False)
 
-    def patch(self, request,pk):
-        return self._update(request, pk, partial=True)
+    def patch(self, request,id):
+        return self._update(request, id, partial=True)
 
-    def _update(self, request,pk,partial):
-        client= self.get_object(pk)
+    def _update(self, request,id,partial):
+        client= self.get_object(id)
         serializer= ClientSerializer(
             client, data= request.data, partial= partial,context={"request":request}
         )
@@ -278,15 +274,84 @@ class ClientDetailView(APIView):
         serializer.save(modified_by=request.user)
         return Response(serializer.data)
 
-    def delete(self,request,pk):
-        client=self.get_object(pk)
+    def delete(self,request,id):
+        client=self.get_object(id)
         client.status= Client.Status.INACTIVE
         client.modified_by= request.user
         client.save(update_fields=['status','modified_by','modified_at'])
         return Response({"detail": "Client Deactivated"},status= status.HTTP_200_OK)
 
 
+#project
+class ProjectListCreateView(APIView):
+    permission_classes=[IsAuthenticated]
+
+    def get(self, request):
+        projects= Project.objects.select_related(
+            'client','manager','created_by','modified_by'
+        ).order_by("-id")
+        paginator= Pagination()
+        page= paginator.paginate_queryset(projects, request, view=self)
+        serializer= ProjectSerializer(
+            page, many=True, context={"request":request}
+        )
+        return paginator.get_paginated_response(serializer.data)
+
+    def post(self, request):
+        serializer= ProjectSerializer(data= request.data, context={"request":request})
+        serializer.is_valid(raise_exception=True)
+        serializer.save(created_by= request.user, modified_by= request.user)
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+class ProjectDetailView(APIView):
+    permission_classes=[IsAuthenticated]
+
+    def get_object(self,id):
+        return get_object_or_404(Project, pk=id)
+
+    def get(self, request,id):
+        project= self.get_object(id)
+        serializer= ProjectSerializer(project, context={"request": request})
+        return Response(serializer.data)
+
+    def put(self, request,id):
+        return self._update(request, id, partial= False)
+
+    def patch(self, request,id):
+            return self._update(request, id, partial= True)
+
+    def _update(self, request, id, partial):
+        project= self.get_object(id)
+        serializer= ProjectSerializer(project, data= request.data, partial= partial, context={"request":request})
+        serializer.is_valid(raise_exception= True)
+        serializer.save(modified_by= request.user)
+        return Response(serializer.data)
+
+    def delete(self, request,id):
+        project= self.get_object(id)
+        project.project_status= "Inactive"
+        project.modified_by= request.user
+        project.save(update_fields=['project_status','modified_by','modified_at'])
+        return Response({"detail": "Project Deactivated"}, status=status.HTTP_200_OK)
+
+# class ProjectTypeListView(APIView):
+#     permission_classes=[IsAuthenticated]
     
+#     def get(self, request):
+#         types=[]
+
+#         for option, _label in Project.Project_Type:
+#             types.append(option)
+
+#         saved_types= Project.objects.exclude(project_type= None).values_list(
+#             "project_type", flat= True
+#         ).distinct()
+#         for name in saved_types:
+#             if name not in types:
+#                 types.append(name)
+#         return Response(types) 
+
+
 
 
 

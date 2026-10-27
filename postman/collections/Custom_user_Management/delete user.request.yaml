@@ -1,0 +1,10 @@
+$kind: http-request
+url: http://127.0.0.1:8000/api/users/12/
+method: DELETE
+body:
+  type: json
+  content: '{"email": "testuse@example.com"}'
+auth:
+  type: noauth
+examples: .resources/delete user.resources/examples
+order: 6705

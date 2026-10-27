@@ -35,7 +35,7 @@ class User(AbstractUser):
 
     username= models.CharField(max_length=100, unique= True, blank=True, null=True)
     email= models.EmailField(unique= True, blank=True, null=True)
-    profiles= models.CharField(max_length= 20, choices=Profile.choices, default= Profile.STANDARD)
+    profiles= models.CharField(max_length= 50, default="Standard", blank=True, null=True)
     date_of_birth= models.DateField(blank=True, null=True )
     gender= models.CharField(max_length=10, choices=Gender.choices, blank= True, null=True)
     nationality= models.CharField(max_length= 70, blank=True, null=True)
@@ -47,22 +47,30 @@ class User(AbstractUser):
     emergency_contact_name= models.CharField(max_length=50, blank=True, null=True)
     emergency_contact_number= models.CharField(max_length=15, blank= True,  null=True)
     emergency_contact_relationship= models.CharField(max_length= 50, blank=True,  null=True)
-    status= models.CharField(max_length=10, choices=Status.choices, default= Status.ACTIVE)
+    status= models.CharField(max_length=10, choices=Status.choices, default= Status.ACTIVE, blank= True, null=True)
     
     otp_code= models.CharField(max_length=6, blank=True,  null=True)
     otp_purpose=models.CharField(max_length=20,blank=True, null=True)
     otp_expires_at= models.DateTimeField(null=True, blank=True)
     otp_attempts= models.PositiveSmallIntegerField(default=0)
 
-    verify_request_count= models.PositiveSmallIntegerField(default=0)
-    verify_window_start= models.DateTimeField(null= True, blank=True)
-    verify_blocked_until= models.DateTimeField(null=True, blank=True)
+    otp_request_count= models.PositiveSmallIntegerField(default=0)
+    otp_window_start= models.DateTimeField(null= True, blank=True)
+    otp_blocked_until= models.DateTimeField(null=True, blank=True)
+
+
+    def save(self, *args, **kwargs):
+        if self.profiles:
+            self.profiles= self.profiles.strip().lower()
+        if not self.profiles:
+            self.profiles = "standard"
+        super().save(*args, **kwargs)
 
     def __str__(self):
-        return self.email or self.username or f"User.{self.pk}"
+        return self.email or f"User.{self.pk}"
 
 
-
+#client model
 class Client(models.Model):
     class Status(models.TextChoices):
         ACTIVE="active","Active"
@@ -98,4 +106,60 @@ class Client(models.Model):
 
     def __str__(self):
         return f"{self.first_name} {self.last_name}"
+
+
+
+#project model
+class Project(models.Model):
+    Project_Type=[
+        ('Web','Web'),
+        ('Mobile','Mobile'),
+        ('Software','Software'),
+        ('Design','Design'),
+    ]
+
+    Project_Status=[
+        ('Active','Active'),
+        ('Completed','Completed'),
+        ('Inprogress','Inprogress'),
+        ('Pending','Pending'),
+        ('Inactive','Inactive'),
+    ]
+
+    project_title= models.CharField(max_length=100, blank=True, null= True)
+    project_type=  models.CharField(max_length=100,  blank=True, null= True)
+    project_status=  models.CharField(max_length=100, choices=Project_Status, default= 'Inprogress', blank=True, null= True)
+    date_of_completion= models.DateField(blank=True, null= True)
+
+    client= models.ForeignKey(
+        'Client',
+        on_delete= models.PROTECT,
+        related_name="projects",
+        null=True, blank=True
+    )
+    manager= models.ForeignKey(
+        'User',
+        on_delete= models.PROTECT,
+        related_name= "managed_projects",
+        null= True, blank=True
+    )
+    created_by= models.ForeignKey(
+        'User',
+        on_delete= models.PROTECT,
+        related_name= 'created_projects',
+        null=True,blank=True
+    )
+    created_at= models.DateTimeField(auto_now_add=True,null=True,blank=True)
+    
+    modified_by= models.ForeignKey(
+        'User',
+        on_delete=models.PROTECT,
+        related_name='modified_projects',
+        null=True,blank=True
+    )
+    modified_at= models.DateTimeField(auto_now=True,null=True,blank=True)
+
+    def __str__(self):
+        return self.project_title or f" Project.{self.pk}"
+
 

@@ -1,0 +1,13 @@
+$kind: http-request
+url: " http://127.0.0.1:8000/api/project/1/"
+method: PATCH
+body:
+  type: json
+  content: "{\r
+
+    \    \"date_of_completion\":\"2027-01-26\"\r
+
+    }"
+auth:
+  type: noauth
+order: 5000

@@ -1,0 +1,19 @@
+$kind: http-request
+url: " http://127.0.0.1:8000/api/project/"
+method: POST
+body:
+  type: json
+  content: "{\r
+
+    \    \"project_title\": \"project management\",\r
+
+    \    \"project_type\":\"AI Engineer\",\r
+
+    \    \"client\": 1,\r
+
+    \    \"manager\": 8\r
+
+    }"
+auth:
+  type: noauth
+order: 1000

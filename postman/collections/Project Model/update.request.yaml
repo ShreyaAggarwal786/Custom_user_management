@@ -1,0 +1,23 @@
+$kind: http-request
+url: " http://127.0.0.1:8000/api/project/1/"
+method: PUT
+body:
+  type: json
+  content: "{\r
+
+    \    \"project_title\":\"title\",\r
+
+    \    \"project_type\":\"web\",\r
+
+    \    \"client\":1,\r
+
+    \    \"manager\":11,\r
+
+    \    \"project_status\":\"Pending\"\r
+
+    \    \r
+
+    }"
+auth:
+  type: noauth
+order: 4000
