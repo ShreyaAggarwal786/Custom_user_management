@@ -1,10 +1,10 @@
 from rest_framework import serializers
 
-from .models import User, Client, Project
+from .models import User, Client, Project, ProjectAttachement, Profile
 
 USER_FIELDS= [
     'id','username','email','first_name','last_name',
-    'profiles','date_of_birth','gender','nationality','image',
+    'profile','date_of_birth','gender','nationality','image',
     'blood_group','phone','permanent_address','current_address',
     'emergency_contact_name','emergency_contact_number',
     'emergency_contact_relationship','status'
@@ -14,6 +14,7 @@ USER_FIELDS= [
 class UserCreateSerializer(serializers.ModelSerializer):
     email= serializers.EmailField()
     password= serializers.CharField(write_only=True, required= False)
+    profile= serializers.CharField(required=False, allow_null=True, allow_blank= True)
 
     class Meta:
         model= User
@@ -26,26 +27,57 @@ class UserCreateSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("A user with this email already exists.")
         return value
 
+    def validate_profile(self,value):
+        if not value:
+            return None
+        profile= None
+        if value.isdigit():
+            profile= Profile.objects.filter(pk= int(value)).first()
+        if profile is None:
+            profile= Profile.objects.filter(role__iexact=value).first()
+        if profile is None:
+            raise serializers.ValidationError("Profile does not exist.")
+        return profile
+
+    def validate(self, attrs):
+        required_fields= ['email','profile']
+
+        for field in required_fields:
+            value= attrs.get(field)
+            if value is None or not str(value).strip():
+                raise serializers.ValidationError({field: f"{field} is required."})
+        return attrs
+
     def create(self,validated_data):
         password= validated_data.pop("password", None)
         if not password:
             password= validated_data['email'].split("@")[0]+"@123"
+
+            
         user= User(**validated_data)
         user.set_password(password)
         user.save()
         return user
 
 class UserSerializer(serializers.ModelSerializer):
+    profile= serializers.SerializerMethodField()
     class Meta:
         model=User
         fields= USER_FIELDS
         read_only_fields= USER_FIELDS
 
+    def get_profile(self,obj):
+        if obj.profile is None:
+            return None
+        return {"id":obj.profile.id, 
+                "role": obj.profile.role}
+    
+
 class UserUpdateSerializer(serializers.ModelSerializer):
     class Meta:
         model= User
         fields= USER_FIELDS
-        read_only_fields= ['id']
+        read_only_fields= ['id','status']
 
 
     def validate_email(self,value):
@@ -59,7 +91,10 @@ class UserUpdateSerializer(serializers.ModelSerializer):
     def validate(self, attrs):
         if "email" in attrs and not attrs["email"] :
             raise serializers.ValidationError({"email": "email cannot be empty."})
+        if "profile" in attrs and attrs["profile"] is None:
+            raise serializers.ValidationError({"profile":"profile cannot be empty."})
         return attrs
+    
 
     
 class LoginSerializer(serializers.Serializer):
@@ -83,13 +118,47 @@ class ForgotPasswordSerializer(serializers.Serializer):
 class ResetPasswordSerializer(serializers.Serializer):
     email = serializers.EmailField()
     otp = serializers.CharField(max_length=6)
-    new_password = serializers.CharField(write_only=True)
+    new_password = serializers.CharField(write_only=True, min_length=8)
 
 
+#profile
+class ProfileSerializer(serializers.ModelSerializer):
+    users= serializers.SerializerMethodField()
 
+    class Meta:
+        model= Profile
+        fields=['id','role','is_default','users']
+        read_only_fields=['id','is_default']
+    def get_users(self,obj):
+        result=[]
+        for user in obj.users.all():
+            result.append({"id": user.id, "email": user.email})
+        return result
+    def validate_role(self,value):
+        if value is None or not value.strip():
+            raise serializers.ValidationError("role is required.")
+        value= value.strip()
 
+        profiles= Profile.objects.filter(role__iexact=value)
+        if self.instance:
+            profiles= profiles.exclude(pk= self.instance.pk)
+            if self.instance.is_default and value != self.instance.role:
+                raise serializers.ValidationError("Default profile role cannot be changed.")
+        if profiles.exists():
+            raise serializers.ValidationError("A profile with this role already exist.")
+        return value
+
+    def validate(self,attrs):
+        if not self.partial and "role" not in attrs:
+            raise serializers.ValidationError({"role":"role is required."})
+        return attrs
+
+    
 
 class ClientSerializer(serializers.ModelSerializer):
+    created_by = serializers.SerializerMethodField()
+    modified_by = serializers.SerializerMethodField()
+
     class Meta:
         model= Client
         fields=[
@@ -99,7 +168,7 @@ class ClientSerializer(serializers.ModelSerializer):
             'created_at','modified_by','modified_at'
         ]
         read_only_fields=[
-            'id', 'created_by', 'created_at', 'modified_by', 'modified_at'    
+            'id', 'status', 'created_by', 'created_at', 'modified_by', 'modified_at'    
         ]
         
     def validate_email(self,value):
@@ -112,15 +181,26 @@ class ClientSerializer(serializers.ModelSerializer):
         return value
 
     def validate(self,attrs):
-        required_fields= ["first_name", "last_name", "contact_number", "address", "country"]
+        required_fields= ["first_name", "last_name","email"]
 
         for field in required_fields:
-            if self.instance is not None and field not in attrs:
+            if self.partial and field not in attrs:
                 continue
             value= attrs.get(field)
             if not value or not str(value).strip():
                 raise serializers.ValidationError({field: f"{field} is required."})
         return attrs
+    def get_created_by(self, obj):
+        if obj.created_by is None:
+            return None
+        return {"id": obj.created_by.id, "first_name": obj.created_by.first_name, "last_name": obj.created_by.last_name, "email": obj.created_by.email}
+
+    def get_modified_by(self, obj):
+        if obj.modified_by is None:
+            return None
+        u= obj.modified_by
+        return {"id": u.id, "first_name": u.first_name, "last_name": u.last_name, "email": u.email}
+
 
 
 
@@ -128,29 +208,34 @@ class ClientSerializer(serializers.ModelSerializer):
 #project 
 
 class ProjectSerializer(serializers.ModelSerializer):
+    created_by = serializers.SerializerMethodField()
+    modified_by = serializers.SerializerMethodField()
+    attachements= serializers.SerializerMethodField()
+    # total_attachements= serializers.ReadOnlyField()
+    # attachement_list= serializers.ReadOnlyField()
     class Meta:
         model= Project
         fields=[
-            'id','project_title','project_type',
-            'project_status','date_of_completion','client',
+            'id','project_title','project_type','project_status',
+            'description','attachements','date_of_completion','client',
             'manager','created_by','created_at','modified_by','modified_at'
         ]
 
         read_only_fields=['id','created_by','created_at','modified_by','modified_at']
 
-    # def validate_project_type(self,value):
-    #     if not value:
-    #         return value
-    #     value= value.strip()
-    #     for option, _label in Project.Project_Type:
-    #         if value.casefold()== option.casefold():
-    #             return option
-    #     return value
     
     def validate(self,attrs):
-        required_fields= ['project_title','project_type','client','manager']
+        if self.instance and self.instance.project_status == "Inactive":
+            new_status = attrs.get("project_status")
+
+        if new_status is not None and new_status != "Inactive":
+            raise serializers.ValidationError({
+                "project_status": "Project is inactive. Use restore API."
+            })
+
+        required_fields= ['project_title','project_type','manager']
         for field in required_fields:
-            if self.instance is not None and field not in attrs:
+            if self.partial and field not in attrs:
                 continue
             value= attrs.get(field)
             if value is None:
@@ -166,6 +251,86 @@ class ProjectSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError({'manager': 'manager is not active.'})
 
         return attrs
+    
+    def get_created_by(self, obj):
+        if obj.created_by is None:
+            return None
+        return {"id": obj.created_by.id, "first_name": obj.created_by.first_name, "last_name": obj.created_by.last_name, "email": obj.created_by.email}
+
+    def get_modified_by(self, obj):
+        if obj.modified_by is None:
+            return None        
+        u= obj.modified_by
+        return {"id": u.id, "first_name": u.first_name, "last_name": u.last_name, "email": u.email}
+
+    def get_attachements(self, obj):
+        if obj.project_status == "Inactive":
+            return[]
+        items= obj.projectattachement_set.all()
+        return ProjectAttachementSerializer(items,many= True, context=self.context).data
+        
+
+
+#Project Attachement
+    
+# ALLOWED_Extensions= (".pdf",".doc",".docx",".xls",".xlsx",".png",".jpg",".txt",".zip")
+# Max_FILE_SIZE= 5*1024*1024
+
+class ProjectAttachementSerializer(serializers.ModelSerializer):
+    # created_by = serializers.SerializerMethodField()
+    # modified_by = serializers.SerializerMethodField()
+
+    class Meta:
+        model= ProjectAttachement
+        fields=['id','file','file_name']
+        read_only_fields=['id','file_name']
+    
+    def validate(self, attrs):
+        required_fields= ['file']
+        for field in required_fields:
+            if self.partial and field not in attrs:
+                continue
+            if not attrs.get(field):
+                raise serializers.ValidationError({field: f"{field} is required."})
+        return attrs
+
+    # def validate_file(self, value):
+            
+        #     if not value.name.lower():
+        #         raise serializers.ValidationError("This file type is not allowed.")
+        #     if len(value.name)>255:
+        #         raise serializers.ValidationError("File name is too long.")
+        #     if value.size == 0:
+        #          raise serializers.ValidationError("File is empty.")
+        #     if value.size > Max_FILE_SIZE:
+        #          raise serializers.ValidationError("File size cannot be more than 5 MB.")
+        #     return value
+
+    # def get_created_by(self, obj):
+    #     if obj.created_by is None:
+    #         return None
+    #     return {"id": obj.created_by.id, "first_name": obj.created_by.first_name, "last_name": obj.created_by.last_name, "email": obj.created_by.email}
+
+    # def get_modified_by(self, obj):
+    #     if obj.modified_by is None:
+    #         return None       
+    #     u= obj.modified_by
+    #     return {"id": u.id, "first_name": u.first_name, "last_name": u.last_name, "email": u.email}
+        
+    
+#Restore
+class RestoreSerializer(serializers.Serializer):
+    model= serializers.ChoiceField(
+        choices= [
+            ('user', 'User'),
+            ('client', 'Client'),
+            ('project','Project')
+        ]
+    ) 
+    id= serializers.IntegerField(min_value=1)
+
+
+    
 
 
 

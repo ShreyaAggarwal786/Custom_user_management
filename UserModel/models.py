@@ -5,15 +5,7 @@ from django.db import models
 from django.conf import settings
 
 
-
-class User(AbstractUser):
-    class Profile(models.TextChoices):
-        ADMINISTRATOR= "administrator", "Administrator"
-        STANDARD= "standard", "Standard"
-        DEVELOPER= "developer", "Developer"
-        CLIENT= "client", "Client"
-        HUMAN_RESOURCES= "human_resources", "Human_Resources"
-
+class User(AbstractUser):    
     class Status(models.TextChoices):
         ACTIVE= "active", "Active"
         INACTIVE= "inactive", "Inactive"
@@ -33,9 +25,16 @@ class User(AbstractUser):
         O_POSITIVE= "O+","O+"
         O_NEGATIVE= "O-","O-"
 
+    profile= models.ForeignKey(
+        'Profile',
+        on_delete= models.SET_NULL,
+        related_name= "users",
+        blank=True, null=True
+    )
+
     username= models.CharField(max_length=100, unique= True, blank=True, null=True)
     email= models.EmailField(unique= True, blank=True, null=True)
-    profiles= models.CharField(max_length= 50, default="Standard", blank=True, null=True)
+    
     date_of_birth= models.DateField(blank=True, null=True )
     gender= models.CharField(max_length=10, choices=Gender.choices, blank= True, null=True)
     nationality= models.CharField(max_length= 70, blank=True, null=True)
@@ -59,15 +58,25 @@ class User(AbstractUser):
     otp_blocked_until= models.DateTimeField(null=True, blank=True)
 
 
-    def save(self, *args, **kwargs):
-        if self.profiles:
-            self.profiles= self.profiles.strip().lower()
-        if not self.profiles:
-            self.profiles = "standard"
-        super().save(*args, **kwargs)
+    # def save(self, *args, **kwargs):
+    #     if self.profiles:
+    #         self.profiles= self.profiles.strip().lower()
+    #     if not self.profiles:
+    #         self.profiles = "standard"
+    #     super().save(*args, **kwargs)
 
     def __str__(self):
         return self.email or f"User.{self.pk}"
+
+class Profile(models.Model):
+        role= models.CharField(max_length=50, unique=True,blank=True, null=True)
+        is_default= models.BooleanField(default=False)
+
+        class Meta:
+            ordering=['-id']
+
+        def __str__(self):
+            return self.role or f"Profile.{self.pk}"
 
 
 #client model
@@ -86,7 +95,7 @@ class Client(models.Model):
     status= models.CharField(max_length=10, choices= Status.choices, default=Status.ACTIVE)
 
     created_by= models.ForeignKey(
-        settings.AUTH_USER_MODEL,
+        'User',
         on_delete= models.PROTECT,
         related_name="clients_created"
     )
@@ -94,7 +103,7 @@ class Client(models.Model):
 
 
     modified_by= models.ForeignKey(
-        settings.AUTH_USER_MODEL,
+        'User',
         on_delete=models.PROTECT,
         related_name="clients_modified"
     ) 
@@ -111,13 +120,6 @@ class Client(models.Model):
 
 #project model
 class Project(models.Model):
-    Project_Type=[
-        ('Web','Web'),
-        ('Mobile','Mobile'),
-        ('Software','Software'),
-        ('Design','Design'),
-    ]
-
     Project_Status=[
         ('Active','Active'),
         ('Completed','Completed'),
@@ -128,6 +130,7 @@ class Project(models.Model):
 
     project_title= models.CharField(max_length=100, blank=True, null= True)
     project_type=  models.CharField(max_length=100,  blank=True, null= True)
+    description= models.TextField(blank=True, null=True)
     project_status=  models.CharField(max_length=100, choices=Project_Status, default= 'Inprogress', blank=True, null= True)
     date_of_completion= models.DateField(blank=True, null= True)
 
@@ -159,7 +162,35 @@ class Project(models.Model):
     )
     modified_at= models.DateTimeField(auto_now=True,null=True,blank=True)
 
+    # @property
+    # def total_attachement(self):
+    #     return self.projectattachement_set.count()
+
+    # @property
+    # def attachement_list(self):
+    #     return list(self.projectattachement_set.values('id','file_name'))
+
+    
     def __str__(self):
         return self.project_title or f" Project.{self.pk}"
+
+class ProjectAttachement(models.Model):
+    project= models.ForeignKey(
+        'Project',
+        on_delete= models.PROTECT,
+        blank=True, null=True
+    )
+
+    file= models.FileField(upload_to="project_attachements/%y%m", null= True, blank=True)
+    file_name= models.CharField(max_length=255,blank= True, null=True)
+    # file_size= models.PositiveIntegerField(blank=True, null=True)
+
+    class Meta:
+        ordering = ["-id"]
+
+    def __str__(self):
+        return self.file_name or f"Attachement.{self.pk}"
+
+
 
 

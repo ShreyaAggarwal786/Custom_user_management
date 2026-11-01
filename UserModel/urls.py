@@ -14,6 +14,9 @@ from .views import (
     ClientDetailView,
     ProjectListCreateView,
     ProjectDetailView,
+    ProfileListCreateView,
+    ProfileDetailView,
+    Restoreview,
     
     )
 
@@ -32,6 +35,8 @@ urlpatterns= [
     path("client/<int:id>/",ClientDetailView.as_view()),
     path("project/",ProjectListCreateView.as_view()),
     path("project/<int:id>/",ProjectDetailView.as_view()),
-    # path("project-types/",ProjectTypeListView.as_view()),
+    path("profile/", ProfileListCreateView.as_view()),
+    path("profile/<int:id>/", ProfileDetailView.as_view()),
+    path("restore/", Restoreview.as_view()),
 
 ]

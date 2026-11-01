@@ -1,12 +1,12 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin
 
-from .models import  User
+from .models import  User, Profile
 
 @admin.register(User)
 class CustomUserAdmin(UserAdmin):
-    list_display= ('id','username','email','profiles','status', 'is_staff')
-    list_filter= ('status','profiles','is_staff')
+    list_display= ('id','username','email','profile','status', 'is_staff')
+    list_filter= ('status','profile','is_staff')
     search_fields = ('username','email','first_name', 'last_name')
     ordering=('id',)
 
@@ -15,7 +15,7 @@ class CustomUserAdmin(UserAdmin):
             "Extra details",
             {
                 'fields':(
-                    'profiles','status','date_of_birth','gender',
+                    'profile','status','date_of_birth','gender',
                     'nationality','image','blood_group','phone',
                     'permanent_address','current_address',
                     'emergency_contact_name','emergency_contact_number',
@@ -25,7 +25,9 @@ class CustomUserAdmin(UserAdmin):
         ),
     )
     add_fieldsets= UserAdmin.add_fieldsets+ (
-        (None, {'fields': ('email','profiles','status')}),
+        (None, {'fields': ('email','profile','status')}),
     )
+
+admin.site.register(Profile)
 
 

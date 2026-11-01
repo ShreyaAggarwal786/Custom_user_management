@@ -1,0 +1,7 @@
+$kind: http-request
+url: " http://127.0.0.1:8000/api/profile/4/"
+method: PATCH
+body:
+  type: json
+  content: "{\r\n    \"name\":\"Manager\"\r\n}"
+order: 6000
