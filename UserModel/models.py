@@ -34,7 +34,6 @@ class User(AbstractUser):
 
     username= models.CharField(max_length=100, unique= True, blank=True, null=True)
     email= models.EmailField(unique= True, blank=True, null=True)
-    
     date_of_birth= models.DateField(blank=True, null=True )
     gender= models.CharField(max_length=10, choices=Gender.choices, blank= True, null=True)
     nationality= models.CharField(max_length= 70, blank=True, null=True)
@@ -48,22 +47,9 @@ class User(AbstractUser):
     emergency_contact_relationship= models.CharField(max_length= 50, blank=True,  null=True)
     status= models.CharField(max_length=10, choices=Status.choices, default= Status.ACTIVE, blank= True, null=True)
     
-    otp_code= models.CharField(max_length=6, blank=True,  null=True)
-    otp_purpose=models.CharField(max_length=20,blank=True, null=True)
-    otp_expires_at= models.DateTimeField(null=True, blank=True)
-    otp_attempts= models.PositiveSmallIntegerField(default=0)
+    otp_code= models.JSONField(default=dict, blank=True,  null=True)
+    otp_request_timestamps= models.JSONField(default=list, blank=True, null=True)
 
-    otp_request_count= models.PositiveSmallIntegerField(default=0)
-    otp_window_start= models.DateTimeField(null= True, blank=True)
-    otp_blocked_until= models.DateTimeField(null=True, blank=True)
-
-
-    # def save(self, *args, **kwargs):
-    #     if self.profiles:
-    #         self.profiles= self.profiles.strip().lower()
-    #     if not self.profiles:
-    #         self.profiles = "standard"
-    #     super().save(*args, **kwargs)
 
     def __str__(self):
         return self.email or f"User.{self.pk}"
@@ -132,7 +118,9 @@ class Project(models.Model):
     project_type=  models.CharField(max_length=100,  blank=True, null= True)
     description= models.TextField(blank=True, null=True)
     project_status=  models.CharField(max_length=100, choices=Project_Status, default= 'Inprogress', blank=True, null= True)
+    start_date= models.DateField(auto_now_add=True, blank=True, null=True)
     date_of_completion= models.DateField(blank=True, null= True)
+    is_deleted= models.BooleanField(default=False)
 
     client= models.ForeignKey(
         'Client',
@@ -162,14 +150,7 @@ class Project(models.Model):
     )
     modified_at= models.DateTimeField(auto_now=True,null=True,blank=True)
 
-    # @property
-    # def total_attachement(self):
-    #     return self.projectattachement_set.count()
-
-    # @property
-    # def attachement_list(self):
-    #     return list(self.projectattachement_set.values('id','file_name'))
-
+    
     
     def __str__(self):
         return self.project_title or f" Project.{self.pk}"
@@ -191,6 +172,51 @@ class ProjectAttachement(models.Model):
     def __str__(self):
         return self.file_name or f"Attachement.{self.pk}"
 
+# Project Task Model
+class ProjectTask(models.Model):
+
+    STATUS_CHOICES = [
+        ('Pending', 'Pending'),
+        ('Active', 'Active'),
+        ('Inactive', 'Inactive'),
+        ('Inprogress', 'Inprogress'),
+        ('Completed', 'Completed'),
+        ('On Hold', 'On Hold'),
+        ('Cancelled', 'Cancelled'),
+    ]
+
+    project = models.ForeignKey('Project',on_delete=models.PROTECT,related_name='tasks',null=True,blank=True)
+    assign_by = models.ForeignKey('User',on_delete=models.PROTECT,related_name='assigned_by_tasks',null=True,blank=True)
+    assign_to = models.ForeignKey('User',on_delete=models.PROTECT,related_name='assigned_tasks',null=True,blank=True)
+    title = models.CharField(max_length=200, null=True, blank=True)
+    description = models.TextField(null=True, blank=True)
+    task_status = models.CharField(max_length=20,choices=STATUS_CHOICES,default='Pending',null=True,blank=True)
+    is_deleted = models.BooleanField(default=False)
+    task_start_date = models.DateField(auto_now_add=True,null=True,blank=True)
+    task_complete_date = models.DateField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True, null=True, blank=True)
+    created_by = models.ForeignKey('User',on_delete=models.PROTECT,related_name='created_tasks',null=True,blank=True)
+    updated_at = models.DateTimeField(auto_now=True, null=True, blank=True)
+    updated_by = models.ForeignKey('User',on_delete=models.PROTECT,related_name='updated_tasks',null=True,blank=True)
+
+    
+    class Meta:
+        ordering = ['-id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['project', 'title'],
+                name='unique_task_title_per_project'
+            )]
+
+    def __str__(self):
+        return self.title or f"Task.{self.pk}"
 
 
-
+class TaskComment(models.Model):
+    task = models.ForeignKey('ProjectTask',on_delete=models.CASCADE,related_name='comments', blank= True, null=True)
+    user = models.ForeignKey('User',on_delete=models.PROTECT,related_name='task_comments', blank= True, null=True)
+    comment = models.TextField(blank= True, null=True)
+    class Meta:
+        ordering=['-id']
+    def __str__(self):
+        return f"Comment on Task {self.task_id} by {self.user_id}"

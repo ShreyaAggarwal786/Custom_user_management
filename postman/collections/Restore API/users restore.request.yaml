@@ -1,0 +1,7 @@
+$kind: http-request
+url: " http://127.0.0.1:8000/api/users/restore/"
+method: POST
+body:
+  type: json
+  content: "{\r\n    \"ids\": [14,12,16,18]\r\n}"
+order: 1000

@@ -1,0 +1,7 @@
+$kind: http-request
+url: http://127.0.0.1:8000/api/client/restore/
+method: POST
+body:
+  type: json
+  content: "{\r\n    \"ids\": 5\r\n}"
+order: 2000

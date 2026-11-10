@@ -1,0 +1,31 @@
+$kind: http-request
+url: " http://127.0.0.1:8000/api/tasks/"
+method: POST
+body:
+  type: formdata
+  content:
+    - type: text
+      key: project
+      value: "33"
+      description: ""
+      disabled: false
+    - type: text
+      key: assign_by
+      value: "10"
+      description: ""
+      disabled: false
+    - type: text
+      key: assign_to
+      value: "17"
+      description: ""
+      disabled: false
+    - type: text
+      key: title
+      value: creat
+      description: ""
+      disabled: false
+auth:
+  type: bearer
+  credentials:
+    token: "{{json_web_token_0yab}}"
+order: 1000

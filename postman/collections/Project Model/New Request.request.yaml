@@ -1,4 +1,15 @@
 $kind: http-request
-url: ""
-method: GET
+url: " http://127.0.0.1:8000/api/project/14/"
+method: DELETE
+body:
+  type: json
+  content: "{\r
+
+    \    \"attachements_ids\":[3]\r
+
+    }"
+auth:
+  type: bearer
+  credentials:
+    token: "{{json_web_token_04o9}}"
 order: 8000

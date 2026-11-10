@@ -142,6 +142,14 @@ EMAIL_TIMEOUT= 10
 
 OTP_EXPIRY_MINUTES= 5
 OTP_MAX_ATTEMPTS = 3
+# CACHES={
+#     "default":{
+#         "Backend": "django.core.cache.backend.locmem.LocMemCache",
+#         "LOCATION": "otp-cache",
+#         "options":{"MAX_ENTRIES":10000,
+#         },
+#     }
+# }
 
 
 REST_FRAMEWORK= {
