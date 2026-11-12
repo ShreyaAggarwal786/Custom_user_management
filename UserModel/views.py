@@ -32,22 +32,19 @@ class Pagination(PageNumberPagination):
 
 
 class UserListCreateView(APIView):
-    permission_classes=[AllowAny]
+    permission_classes=[IsAuthenticated]
 
     def get(self,request):
-        users=User.objects.order_by('id')
+        users=User.objects.exclude(status=User.status.INACTIVE).order_by('id')
 
        
         search = request.query_params.get("search", "").strip()
         if search:
             for word in search.split():
                 users = users.filter(
-                    Q(username__icontains=word) |
-                    Q(email__icontains=word) |
-                    Q(first_name__icontains=word) |
-                    Q(last_name__icontains=word) |
-                    Q(phone__icontains=word) |
-                    Q(profile__role__icontains=word)
+                    Q(username__icontains=word) |Q(email__icontains=word) |
+                    Q(first_name__icontains=word) |Q(last_name__icontains=word) |
+                    Q(phone__icontains=word) |Q(profile__role__icontains=word)
                 )
     # Individual filters
         first_name = request.query_params.get("first_name", "").strip()
@@ -115,19 +112,26 @@ class UserListCreateView(APIView):
         return paginator.get_paginated_response(serializer.data)
 
     def post(self, request):
+        if (
+            request.user.profile is None or
+            request.user.profile.role.lower() not in ["super admin", "admin"]):
+            return Response({"detail": "Only Super Admin and Admin can create users."},status=status.HTTP_403_FORBIDDEN)
         serializer= UserCreateSerializer(data= request.data, context={"request":request})
         serializer.is_valid(raise_exception=True)
-        user= serializer.save()
+        user= serializer.save(
+            created_by=request.user,
+            modified_by=request.user
+        )
 
         try:
             send_welcome_email(user)
         except Exception:
             print("Welcome email failed")
-        return Response(serializer.data, status=status.HTTP_201_CREATED)
+        return Response((UserSerializer(user, context={"request":request})).data, status=status.HTTP_201_CREATED)
 
 
 class UserDetailView(APIView):
-    permission_classes=[AllowAny]
+    permission_classes=[IsAuthenticated]
 
 
     def get_object(self,id):
@@ -147,19 +151,35 @@ class UserDetailView(APIView):
         return self._update(request,id,partial=True)
 
     def _update(self, request, id, partial):
-        user= self.get_object(id)
+        user = self.get_object(id)
+
+        if partial and request.data.get("status") == User.Status.INACTIVE:
+
+            if user.status == User.Status.INACTIVE:
+                return Response({"detail": "User is already inactive."},status=status.HTTP_400_BAD_REQUEST)
+
+            user.status = User.Status.INACTIVE
+            user.modified_by = request.user
+            user.save()
+
+            return Response({"detail": "User is deleted successfully. "},status=status.HTTP_200_OK)
+
         serializer= UserUpdateSerializer(
-            user, data=request.data, partial=partial, context={"request": request}
-        )
+            user, data=request.data, partial=partial, context={"request": request})
         serializer.is_valid(raise_exception=True)
         user=serializer.save()
         return Response(UserSerializer(user, context={"request":request}).data)
 
-    def delete(self,request, id):
-        user= self.get_object(id)
-        user.status =User.Status.INACTIVE
-        user.save(update_fields=["status"])
-        return Response({"detail": "User Deactivated"}, status= status.HTTP_200_OK)
+    # def delete(self,request, id):
+    #     user= self.get_object(id)
+    #     if user.status ==User.Status.INACTIVE:       
+    #         return Response({"detail": "User is already inactive."}, status= status.HTTP_400_BAD_REQUEST)
+        
+    #     user.status= User.status.INACTIVE
+    #     user.modified_by= request.user
+    #     user.save(update_fields=["status","modified_by"])
+    #     return Response({"detail": "User is deleted successfully."}, status=status.HTTP_200_OK)
+
     
 
 #OTP

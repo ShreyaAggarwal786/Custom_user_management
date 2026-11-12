@@ -50,6 +50,21 @@ class User(AbstractUser):
     otp_code= models.JSONField(default=dict, blank=True,  null=True)
     otp_request_timestamps= models.JSONField(default=list, blank=True, null=True)
 
+    created_by= models.ForeignKey(
+        'self',
+        on_delete= models.SET_NULL,
+        related_name='users_created',
+        null=True, blank=True
+    )
+    created_at= models.DateTimeField(auto_now_add=True, blank=True,null=True)
+    modified_by=models.ForeignKey(
+        'self',
+        on_delete= models.SET_NULL,
+        related_name='users_modified',
+        null=True, blank=True
+    )
+    modified_at= models.DateTimeField(auto_now=True, blank=True,null=True)
+
 
     def __str__(self):
         return self.email or f"User.{self.pk}"
@@ -83,17 +98,19 @@ class Client(models.Model):
     created_by= models.ForeignKey(
         'User',
         on_delete= models.PROTECT,
-        related_name="clients_created"
+        related_name="clients_created",
+        null=True, blank=True
     )
-    created_at=models.DateTimeField(auto_now_add=True)
+    created_at=models.DateTimeField(auto_now_add=True,null=True, blank=True)
 
 
     modified_by= models.ForeignKey(
         'User',
         on_delete=models.PROTECT,
-        related_name="clients_modified"
+        related_name="clients_modified",
+        blank=True, null=True
     ) 
-    modified_at=models.DateTimeField(auto_now=True)
+    modified_at=models.DateTimeField(auto_now=True, blank=True, null=True)
 
 
     class Meta:

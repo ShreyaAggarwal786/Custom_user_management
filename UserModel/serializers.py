@@ -19,12 +19,17 @@ class UserCreateSerializer(serializers.ModelSerializer):
     class Meta:
         model= User
         fields= USER_FIELDS+ ['password']
-        read_only_fields= ['id','status']
+        read_only_fields= ['id','status','created_by','modified_by','created_at','modified_at']
 
     def validate_email(self, value):
         value=value.lower()
         if User.objects.filter(email__iexact=value).exists():
             raise serializers.ValidationError("A user with this email already exists.")
+        return value
+
+    def validate_username(self, value):
+        if value and User.objects.filter(username__iexact=value).exists():
+            raise serializers.ValidationError("A user with this username already exists.")
         return value
 
     def validate_profile(self,value):
@@ -51,16 +56,16 @@ class UserCreateSerializer(serializers.ModelSerializer):
     def create(self,validated_data):
         password= validated_data.pop("password", None)
         if not password:
-            password= validated_data['email'].split("@")[0]+"@123"
-
-            
+            password= validated_data['email'].split("@")[0]+"@123"            
         user= User(**validated_data)
         user.set_password(password)
         user.save()
         return user
 
 class UserSerializer(serializers.ModelSerializer):
-    profile= serializers.SerializerMethodField()
+    profile= serializers.SerializerMethodField() 
+    created_by= serializers.SerializerMethodField() 
+    modified_by= serializers.SerializerMethodField() 
     class Meta:
         model=User
         fields= USER_FIELDS
@@ -71,6 +76,42 @@ class UserSerializer(serializers.ModelSerializer):
             return None
         return {"id":obj.profile.id, 
                 "role": obj.profile.role}
+
+    def get_created_by(self, obj):
+        user= obj.created_by
+        if user is None:
+            return None
+        profile= None
+        if user.profile:
+            profile={
+                "id": user.profile.id,
+                "role":user.profile.role
+            }
+        return {
+            "id":user.id,
+            "first_name": user.first_name,
+            "last_name": user.last_name,
+            "email": user.email,
+            "profile":profile
+        }
+    def get_modified_by(self, obj):
+        user= obj.modified_by
+        if user is None:
+            return None
+        profile= None
+        if user.profile:
+            profile={
+                "id": user.profile.id,
+                "role":user.profile.role
+            }
+        return {
+            "id":user.id,
+            "first_name": user.first_name,
+            "last_name": user.last_name,
+            "email": user.email,
+            "profile":profile
+        }
+    
     
 
 class UserUpdateSerializer(serializers.ModelSerializer):
@@ -87,7 +128,7 @@ class UserUpdateSerializer(serializers.ModelSerializer):
     class Meta:
         model= User
         fields= USER_FIELDS
-        read_only_fields= ['id','status']
+        read_only_fields= ['id','status','created_by','created_at','modified_by','modified_at']
 
 
     def validate_email(self,value):
@@ -123,6 +164,9 @@ class ProfileSerializer(serializers.ModelSerializer):
         if value is None or not value.strip():
             raise serializers.ValidationError("role is required.")
         value= value.strip()
+
+        if not all(char.isalpha() and char.isascii() or char == '_' for char in value):
+            raise serializers.ValidationError("Role can contain only letters (A-Z, a-z) and underscore (_).")
 
         profiles= Profile.objects.filter(role__iexact=value)
         if self.instance:
