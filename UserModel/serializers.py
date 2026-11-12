@@ -74,6 +74,16 @@ class UserSerializer(serializers.ModelSerializer):
     
 
 class UserUpdateSerializer(serializers.ModelSerializer):
+
+    profile = serializers.PrimaryKeyRelatedField(
+        queryset=Profile.objects.all(),
+        required=False,
+        allow_null=True,
+        error_messages={
+            "does_not_exist": "Invalid profile ID. Please provide a valid profile.",
+            "incorrect_type": "Profile ID must be a valid integer."
+        }
+    )
     class Meta:
         model= User
         fields= USER_FIELDS
@@ -89,6 +99,12 @@ class UserUpdateSerializer(serializers.ModelSerializer):
         return value
 
     def validate(self, attrs):
+        if "username" in self.initial_data:
+            raise serializers.ValidationError({"username": "Username cannot be updated."})
+        if "email" in self.initial_data:
+            raise serializers.ValidationError({"email": "Email cannot be updated."})
+        if "status" in self.initial_data:
+            raise serializers.ValidationError({"status": "Status cannot be updated."})
         if "email" in attrs and not attrs["email"] :
             raise serializers.ValidationError({"email": "email cannot be empty."})
         if "profile" in attrs and attrs["profile"] is None:

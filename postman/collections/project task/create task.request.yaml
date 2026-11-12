@@ -21,7 +21,7 @@ body:
       disabled: false
     - type: text
       key: title
-      value: creat
+      value: crea
       description: ""
       disabled: false
 auth:

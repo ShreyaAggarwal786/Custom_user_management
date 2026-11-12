@@ -323,7 +323,7 @@ class ProfileListCreateView(APIView):
         super().initial(request, *args, **kwargs)
         Profile.objects.exclude(role__in= DEFAULT_PROFILES).update(is_default=False)
         for role in DEFAULT_PROFILES:
-            Profile.objects.update_or_create(role= role, default={"is_default":True})
+            Profile.objects.update_or_create(role= role, defaults={"is_default":True})
 
     def get(self, request):
         value = request.query_params.get("profile", "").strip()
