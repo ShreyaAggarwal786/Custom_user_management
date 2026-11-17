@@ -35,7 +35,7 @@ class UserListCreateView(APIView):
     permission_classes=[IsAuthenticated]
 
     def get(self,request):
-        users=User.objects.exclude(status=User.status.INACTIVE).order_by('id')
+        users=User.objects.order_by('id')
 
        
         search = request.query_params.get("search", "").strip()
@@ -68,6 +68,8 @@ class UserListCreateView(APIView):
         if email:
             users = users.filter(email__icontains=email)
 
+        if profile.lower() == "null":
+            return Response({"detail": "Invalid URL parameter."},status=status.HTTP_400_BAD_REQUEST)
         if profile:
             users = users.filter(profile__role__iexact=profile)
 
@@ -153,6 +155,16 @@ class UserDetailView(APIView):
     def _update(self, request, id, partial):
         user = self.get_object(id)
 
+
+        if (
+            request.user.profile is None
+            or request.user.profile.role.lower() not in ["super admin", "admin"]
+        ):
+            return Response(
+                {"detail": "Only Super Admin and Admin can modify users."},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
         if partial and request.data.get("status") == User.Status.INACTIVE:
 
             if user.status == User.Status.INACTIVE:
@@ -167,7 +179,7 @@ class UserDetailView(APIView):
         serializer= UserUpdateSerializer(
             user, data=request.data, partial=partial, context={"request": request})
         serializer.is_valid(raise_exception=True)
-        user=serializer.save()
+        user=serializer.save(modified_by=request.user)
         return Response(UserSerializer(user, context={"request":request}).data)
 
     # def delete(self,request, id):
@@ -348,6 +360,8 @@ class ProfileListCreateView(APIView):
     def get(self, request):
         value = request.query_params.get("profile", "").strip()
 
+        if value.lower() == "null":
+            return Response({"detail": "Invalid URL parameter."},status=status.HTTP_400_BAD_REQUEST)
         if value:
             profile = None
             if value.isdigit():
@@ -753,7 +767,7 @@ class ProjectDetailView(APIView):
 
     def get(self, request,id):
         project= self.get_object(id)
-        if project.is_deleted == "True":
+        if project.is_deleted == True:
             return Response({"detail": "Project is deleted."},status= status.HTTP_400_BAD_REQUEST)
         serializer= ProjectSerializer(project, context={"request": request})
         return Response(serializer.data)
@@ -791,7 +805,7 @@ class ProjectDetailView(APIView):
 
     def _update(self, request, id, partial):
         project= self.get_object(id)
-        if project.is_deleted:                               # CHANGE: deleted project update nahi hoga
+        if project.is_deleted:                               
             return Response({"detail": "Project is already deleted."}, status=status.HTTP_400_BAD_REQUEST)
 
         serializer= ProjectSerializer(project, data= request.data, partial= partial, context={"request":request})
@@ -871,7 +885,7 @@ class ProjectDetailView(APIView):
         project.is_deleted= True
         project.modified_by= request.user
         project.save(update_fields=['is_deleted','modified_by','modified_at'])
-        return Response({"detail": "Project deleted successfully."}, status=status.HTTP_400_BAD_REQUEST)
+        return Response({"detail": "Project deleted successfully."}, status=status.HTTP_200_OK)
 
 
 
@@ -880,15 +894,13 @@ class ProjectTaskListCreateView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-
-        tasks = ProjectTask.objects.filter(
-            is_deleted=False
-        ).select_related(
+        
+        tasks = ProjectTask.objects.filter.select_related(
             'project',
             'assign_by__profile',
             'assign_to__profile',
             'created_by__profile',
-            'updated_by__profile'
+            'modified_by__profile'
         ).prefetch_related(
             'comments__user'
         )
@@ -1021,7 +1033,7 @@ class ProjectTaskListCreateView(APIView):
         serializer = ProjectTaskSerializer(data=request.data,context={"request": request})
         serializer.is_valid(raise_exception=True)
 
-        task = serializer.save(created_by=request.user,updated_by=request.user)
+        task = serializer.save(created_by=request.user,modified_by=request.user)
 
         return Response(
             ProjectTaskSerializer(task,context={"request": request}).data,status=status.HTTP_201_CREATED)
@@ -1048,20 +1060,20 @@ class ProjectTaskDetailView(APIView):
         task = self.get_object(id)
         serializer = ProjectTaskSerializer(task,data=request.data,partial=partial,context={"request": request})
         serializer.is_valid(raise_exception=True)
-        task = serializer.save(updated_by=request.user)
+        task = serializer.save(modified_by=request.user)
         return Response(
             ProjectTaskSerializer(task,context={"request": request}).data)
 
     def delete(self, request, id):
         task = self.get_object(id)
         task.is_deleted = True
-        task.updated_by = request.user
+        task.modified_by = request.user
 
         task.save(
             update_fields=[
                 'is_deleted',
-                'updated_by',
-                'updated_at'
+                'modified_by',
+                'modified_at'
             ])
 
         return Response({"detail": "Task deleted successfully."}, status=status.HTTP_200_OK)
@@ -1103,7 +1115,7 @@ class TaskCommentDeleteView(APIView):
 
 # USER RESTORE
 class UserRestoreView(APIView):
-    permission_classes=[AllowAny]
+    permission_classes=[IsAuthenticated]
 
     def post(self, request, id=None):
         raw= request.query_params.get("ids","") + "," + str(request.data.get("ids","")).strip("[]")
@@ -1114,7 +1126,7 @@ class UserRestoreView(APIView):
         restored= list(users.values_list("id", flat=True))
         if not restored:
             return Response({"detail": "No inactive user found for given ids.", "skipped_ids": sorted(ids)}, status=status.HTTP_400_BAD_REQUEST)
-        users.update(status=User.Status.ACTIVE)
+        users.update(status=User.Status.ACTIVE,modified_by=request.user, modified_at= timezone.now())
         result= {"detail": f"{len(restored)} user(s) restored.", "restored_ids": sorted(restored)}
         skipped= sorted(ids - set(restored))
         if skipped:
@@ -1124,7 +1136,7 @@ class UserRestoreView(APIView):
 
 # CLIENT RESTORE
 class ClientRestoreView(APIView):
-    permission_classes=[AllowAny]
+    permission_classes=[IsAuthenticated]
 
     def post(self, request, id=None):
         raw= request.query_params.get("ids","") + "," + str(request.data.get("ids","")).strip("[]")
@@ -1135,10 +1147,7 @@ class ClientRestoreView(APIView):
         restored= list(clients.values_list("id", flat=True))
         if not restored:
             return Response({"detail": "No inactive client found for given ids.", "skipped_ids": sorted(ids)}, status=status.HTTP_400_BAD_REQUEST)
-        data= {"status": Client.Status.ACTIVE, "modified_at": timezone.now()}
-        if request.user.is_authenticated:                       # NAYA: login ho tabhi modified_by
-            data["modified_by"]= request.user
-        clients.update(**data)
+        clients.update(status=Client.Status.ACTIVE, modified_by=request.user, modified_at=timezone.now())
 
         result= {"detail": f"{len(restored)} client(s) restored.", "restored_ids": sorted(restored)}
         skipped= sorted(ids - set(restored))
@@ -1149,7 +1158,7 @@ class ClientRestoreView(APIView):
 
 # PROJECT RESTORE
 class ProjectRestoreView(APIView):
-    permission_classes=[AllowAny]
+    permission_classes=[IsAuthenticated]
 
     def post(self, request, id=None):
         raw= request.query_params.get("ids","") + "," + str(request.data.get("ids","")).strip("[]")
@@ -1163,11 +1172,7 @@ class ProjectRestoreView(APIView):
             if ids:
                 result["skipped_ids"]= sorted(ids)
             return Response(result, status=status.HTTP_400_BAD_REQUEST)
-
-        data= {"is_deleted": False, "modified_at": timezone.now()}
-        if request.user.is_authenticated:                       # login ho tabhi modified_by
-            data["modified_by"]= request.user
-        projects.update(**data)
+        projects.update(is_deleted=False, modified_by=request.user, modified_at=timezone.now())
 
         result= {"detail": f" project(s) restored.", "restored_ids": sorted(restored)}
         skipped= sorted(ids - set(restored))
@@ -1183,10 +1188,12 @@ class ProjectTaskRestoreView(APIView):
     def post(self, request, id):
         task = get_object_or_404(ProjectTask,pk=id,is_deleted=True)
         task.is_deleted = False
+        task.modified_by= request.user
         task.save(
             update_fields=[
                 'is_deleted',
-                'updated_at'
+                'modified_by',
+                'modified_at'
             ])
 
         return Response({"detail": "Task restored successfully.","restored_id": task.id},status=status.HTTP_200_OK)

@@ -1,5 +1,5 @@
 from rest_framework import serializers
-
+from datetime import date
 from .models import User, Client, Project, ProjectAttachement, Profile, ProjectTask, TaskComment
 
 USER_FIELDS= [
@@ -7,7 +7,7 @@ USER_FIELDS= [
     'profile','date_of_birth','gender','nationality','image',
     'blood_group','phone','permanent_address','current_address',
     'emergency_contact_name','emergency_contact_number',
-    'emergency_contact_relationship','status'
+    'emergency_contact_relationship','status','created_by','created_at','modified_by','modified_at'
 ]
 
 
@@ -143,7 +143,7 @@ class UserUpdateSerializer(serializers.ModelSerializer):
         if "username" in self.initial_data:
             raise serializers.ValidationError({"username": "Username cannot be updated."})
         if "email" in self.initial_data:
-            raise serializers.ValidationError({"email": "Email cannot be updated."})
+            raise serializers.ValidationError({"detail": "Email cannot be updated."})
         if "status" in self.initial_data:
             raise serializers.ValidationError({"status": "Status cannot be updated."})
         if "email" in attrs and not attrs["email"] :
@@ -163,10 +163,11 @@ class ProfileSerializer(serializers.ModelSerializer):
     def validate_role(self,value):
         if value is None or not value.strip():
             raise serializers.ValidationError("role is required.")
-        value= value.strip()
+        value= value.strip()       
 
-        if not all(char.isalpha() and char.isascii() or char == '_' for char in value):
-            raise serializers.ValidationError("Role can contain only letters (A-Z, a-z) and underscore (_).")
+        role_name = value.replace(" ", "")
+        if not role_name.isascii() or not role_name.isalpha():
+            raise serializers.ValidationError("Role must contain only letters.")
 
         profiles= Profile.objects.filter(role__iexact=value)
         if self.instance:
@@ -462,13 +463,13 @@ class ProjectTaskSerializer(serializers.ModelSerializer):
             'is_deleted', 'task_start_date',
             'task_complete_date', 'comments',
             'created_at', 'created_by',
-            'updated_at', 'updated_by'
+            'modified_at', 'modified_by'
         ]
 
         read_only_fields = [
             'id', 'task_start_date', 'is_deleted',
             'created_at', 'created_by',
-            'updated_at', 'updated_by'
+            'modified_at', 'modified_by'
         ]
 
     def to_representation(self, instance):
@@ -486,7 +487,7 @@ class ProjectTaskSerializer(serializers.ModelSerializer):
                 'date_of_completion': project.date_of_completion,
             }
         
-        for field in ['assign_by', 'assign_to', 'created_by', 'updated_by']:
+        for field in ['assign_by', 'assign_to', 'created_by', 'modified_by']:
             u = getattr(instance, field)
             if u is None:
                 data[field] = None
@@ -542,19 +543,8 @@ class ProjectTaskSerializer(serializers.ModelSerializer):
             self.instance.assign_to if self.instance else None)
 
         if assign_to is not None and assign_to.status != 'active':
-            raise serializers.ValidationError({ 'assign_to': 'Assign to user is not active.'})
-
-        project = serializers.PrimaryKeyRelatedField(
-        queryset=Project.objects.all(),
-        required=False,
-        allow_null=True,
-        error_messages={
-            "does_not_exist": "Project does not exist.",
-            "incorrect_type": "Project must be a valid id."
-        })
-
-        
-        from datetime import date
+            raise serializers.ValidationError({ 'assign_to': 'Assign to user is not active.'})        
+        # from datetime import date
 
         task_start_date = (self.instance.task_start_date if self.instance else date.today())
 

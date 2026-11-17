@@ -9,6 +9,7 @@ class CustomUserAdmin(UserAdmin):
     list_filter= ('status','profile','gender')
     search_fields = ('username','email','first_name', 'last_name')
     ordering=('id',)
+    readonly_fields=('created_at','modified_at')
 
     fieldsets= UserAdmin.fieldsets + (
         (
@@ -28,9 +29,4 @@ class CustomUserAdmin(UserAdmin):
     )
 
 admin.site.register(Profile)
-class ProfileAdmin(admin.ModelAdmin):
-    list_display=('id','role','is_default')
-    list_filter=('is_default')
-    search_fields=('role',)
-
 
