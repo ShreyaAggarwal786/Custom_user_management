@@ -7,6 +7,10 @@ __pycache__/
 
 # Secrets
 .env
+*.sqlite3
+*.dump
+data.json
+data_fixed.json
 
 # Local database
 db.sqlite3
@@ -18,3 +22,5 @@ media/
 .vscode/
 .idea/
 Thumbs.db
+
+
