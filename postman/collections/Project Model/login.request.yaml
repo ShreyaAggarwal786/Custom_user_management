@@ -7,7 +7,7 @@ body:
 
     \    \"email\": \"cap@gmail.com\",\r
 
-    \    \"password\": \"cap@123\"\r
+    \    \"password\": \"{{password}}\"\r
 
     }"
 order: 7000

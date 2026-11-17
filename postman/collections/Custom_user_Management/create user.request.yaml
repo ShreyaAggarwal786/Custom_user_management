@@ -7,11 +7,11 @@ body:
 
     \    \"username\": \"shery\",\r
 
-    \    \"email\": \"shreya20924@gmail.com\",\r
+    \    \"email\": \"shreya@gmail.com\",\r
 
-    \    \"password\": \"SB@user09\",\r
+    \    \"password\": \"{{password}}\",\r
 
-    \    \"confirm_password\": \"SB@user09\",\r
+    \    \"confirm_password\": \"{{password}}\",\r
 
     \    \"first_name\": \"Test\",\r
 

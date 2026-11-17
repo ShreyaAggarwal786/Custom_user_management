@@ -8,7 +8,7 @@ request:
 
       \    \"email\": \"user@example.com\",\r
 
-      \    \"password\": \"SB@user09\"\r
+      \    \"password\": \"{{password}}\"\r
 
       }"
 response:
@@ -29,8 +29,8 @@ response:
     type: json
     content: |-
       {
-        "access": "REDACTED_TOKEN",
-        "refresh": "REDACTED_TOKEN",
+        "access": "REMOVED",
+        "refresh": "REMOVED",
         "user": {
           "id": 12,
           "username": "chahat",

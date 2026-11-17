@@ -7,7 +7,7 @@ body:
 
     \    \"email\":\"shreya20924@gmail.com\",\r
 
-    \    \"password\": \"SB@user09\"\r
+    \    \"password\": \"{{password}}\"\r
 
     }"
 order: 7000

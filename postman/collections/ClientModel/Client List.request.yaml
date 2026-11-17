@@ -9,9 +9,9 @@ body:
 
     \    \"email\": \"testuser2@example.com\",\r
 
-    \    \"password\": \"StrongPass#2026\",\r
+    \    \"password\": \"{{password}}\",\r
 
-    \    \"confirm_password\": \"StrongPass#2026\",\r
+    \    \"confirm_password\": \"{{password}}\",\r
 
     \    \"first_name\": \"Test\",\r
 
