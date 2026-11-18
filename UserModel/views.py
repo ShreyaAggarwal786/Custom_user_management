@@ -120,17 +120,61 @@ class UserListCreateView(APIView):
             return Response({"detail": "Only Super Admin and Admin can create users."},status=status.HTTP_403_FORBIDDEN)
         serializer= UserCreateSerializer(data= request.data, context={"request":request})
         serializer.is_valid(raise_exception=True)
-        user= serializer.save(
-            created_by=request.user,
-            modified_by=request.user
-        )
+        with transaction.atomic():
+            user= serializer.save(
+                created_by=request.user,
+                modified_by=request.user
+            )
+            if user.profile and user.profile.role.lower() == "client":
+                Client.objects.create(
+                    first_name=user.first_name,
+                    last_name=user.last_name,
+                    email=user.email,
+                    contact_number=user.phone,
+                    address=user.current_address,
+                    country=user.country,
+                    status=user.status,
+                    created_by=request.user,
+                    modified_by=request.user,
+                )
+        # user= serializer.save(
+        #     created_by=request.user,
+        #     modified_by=request.user
+        # )
+        
 
         try:
             send_welcome_email(user)
         except Exception:
             print("Welcome email failed")
         return Response((UserSerializer(user, context={"request":request})).data, status=status.HTTP_201_CREATED)
+    
+    def patch(self, request):
+        if (
+            request.user.profile is None or
+            request.user.profile.role.lower() not in ["super admin", "admin"]):
+            return Response({"detail": "Only Super Admin and Admin can delete users."}, status=status.HTTP_403_FORBIDDEN)
 
+        raw= request.query_params.get("ids","") + "," + str(request.data.get("ids","")).strip("[]")
+        ids= {int(x) for x in raw.replace(" ","").split(",") if x.isdigit()}
+        if not ids:
+            return Response({"detail": "Please provide user ids to delete."}, status=status.HTTP_400_BAD_REQUEST)
+
+        users= User.objects.filter(pk__in=ids).exclude(status=User.Status.INACTIVE)
+        deleted= list(users.values_list("id", flat=True))
+        if not deleted:
+            return Response({"detail": "No active user found for given ids."}, status=status.HTTP_400_BAD_REQUEST)
+
+        client_emails= list(users.filter(profile__role__iexact="client").values_list("email", flat=True))
+        with transaction.atomic():
+            users.update(status=User.Status.INACTIVE, modified_by=request.user, modified_at=timezone.now())
+            for email in client_emails:
+                Client.objects.filter(email__iexact=email).update(
+                    status=Client.Status.INACTIVE,
+                    modified_by=request.user,
+                    modified_at=timezone.now(),
+                )
+        return Response({"details": "users deleted successfully."},status=status.HTTP_200_OK)
 
 class UserDetailView(APIView):
     permission_classes=[IsAuthenticated]
@@ -154,32 +198,28 @@ class UserDetailView(APIView):
 
     def _update(self, request, id, partial):
         user = self.get_object(id)
-
-
         if (
             request.user.profile is None
-            or request.user.profile.role.lower() not in ["super admin", "admin"]
-        ):
-            return Response(
-                {"detail": "Only Super Admin and Admin can modify users."},
-                status=status.HTTP_403_FORBIDDEN
-            )
-        
-        if partial and request.data.get("status") == User.Status.INACTIVE:
-
-            if user.status == User.Status.INACTIVE:
-                return Response({"detail": "User is already inactive."},status=status.HTTP_400_BAD_REQUEST)
-
-            user.status = User.Status.INACTIVE
-            user.modified_by = request.user
-            user.save()
-
-            return Response({"detail": "User is deleted successfully. "},status=status.HTTP_200_OK)
+            or request.user.profile.role.lower() not in ["super admin", "admin"]):
+            return Response({"detail": "Only Super Admin and Admin can modify users."},status=status.HTTP_403_FORBIDDEN)
 
         serializer= UserUpdateSerializer(
             user, data=request.data, partial=partial, context={"request": request})
         serializer.is_valid(raise_exception=True)
-        user=serializer.save(modified_by=request.user)
+        with transaction.atomic():
+            user=serializer.save(modified_by=request.user)
+            if user.profile and user.profile.role.lower() == "client":
+                updated= Client.objects.filter(email__iexact=user.email).update(
+                    first_name=user.first_name,
+                    last_name=user.last_name,
+                    contact_number=user.phone,
+                    address=user.current_address,
+                    country=user.country,
+                    modified_by=request.user,
+                    modified_at=timezone.now(),
+                )
+                if not updated:
+                    raise ValidationError({"detail": "Client record does not exist for this user."})
         return Response(UserSerializer(user, context={"request":request}).data)
 
     # def delete(self,request, id):
@@ -346,6 +386,7 @@ DEFAULT_PROFILES=[
     "Team Leader",
     "Developer",
     "Human Resources",
+    "Client",
 ]
 
 class ProfileListCreateView(APIView):
@@ -506,6 +547,28 @@ class ClientListCreateView(APIView):
         serializer.save(created_by= request.user, modified_by=request.user)
         return Response(serializer.data, status=status.HTTP_201_CREATED)
 
+    def patch(self, request):
+        raw= request.query_params.get("ids","") + "," + str(request.data.get("ids","")).strip("[]")
+        ids= {int(x) for x in raw.replace(" ","").split(",") if x.isdigit()}
+        if not ids:
+            return Response({"detail": "Please provide client ids to delete."}, status=status.HTTP_400_BAD_REQUEST)
+
+        clients= Client.objects.filter(pk__in=ids).exclude(status=Client.Status.INACTIVE)
+        client_emails= list(clients.values_list("email", flat=True))
+        if not client_emails:
+            return Response({"detail": "No active client found for given ids."}, status=status.HTTP_400_BAD_REQUEST)
+
+        with transaction.atomic():
+            clients.update(status=Client.Status.INACTIVE, modified_by=request.user, modified_at=timezone.now())
+            for email in client_emails:
+                if email:
+                    User.objects.filter(email__iexact=email, profile__role__iexact="client").update(
+                        status=User.Status.INACTIVE,
+                        modified_by=request.user,
+                        modified_at=timezone.now(),
+                    )
+        return Response({"detail": "Clients deleted successfully."}, status=status.HTTP_200_OK)
+
 class ClientDetailView(APIView):
     permission_classes=[IsAuthenticated]
 
@@ -527,6 +590,8 @@ class ClientDetailView(APIView):
 
     def _update(self, request,id,partial):
         client= self.get_object(id)
+        if "status" in request.data:
+            return Response({"status": "Client status cannot be updated,"},status=status.HTTP_400_BAD_REQUEST)
         serializer= ClientSerializer(
             client, data= request.data, partial= partial,context={"request":request}
         )
@@ -534,12 +599,12 @@ class ClientDetailView(APIView):
         serializer.save(modified_by=request.user)
         return Response(serializer.data)
 
-    def delete(self,request,id):
-        client=self.get_object(id)
-        client.status= Client.Status.INACTIVE
-        client.modified_by= request.user
-        client.save(update_fields=['status','modified_by','modified_at'])
-        return Response({"detail": "Client Deactivated"},status= status.HTTP_200_OK)
+    # def delete(self,request,id):
+    #     client=self.get_object(id)
+    #     client.status= Client.Status.INACTIVE
+    #     client.modified_by= request.user
+    #     client.save(update_fields=['status','modified_by','modified_at'])
+    #     return Response({"detail": "Client Deactivated"},status= status.HTTP_200_OK)
 
 
 #project
@@ -756,6 +821,24 @@ class ProjectListCreateView(APIView):
             transaction.on_commit(lambda: send_client_notification(project))
             transaction.on_commit(lambda: send_manager_notification(project))
         return Response(ProjectSerializer(project, context={"request": request}).data, status=status.HTTP_201_CREATED)
+    def patch(self, request):
+        raw = request.query_params.get("ids", "") + "," + str( request.data.get("ids", "")).strip("[]")
+        ids = {int(x) for x in raw.replace(" ", "").split(",")if x.isdigit()}
+        if not ids:
+            return Response({"detail": "Please provide project ids to delete."},status=status.HTTP_400_BAD_REQUEST)
+
+        projects = Project.objects.filter(pk__in=ids, is_deleted=False)
+        deleted_ids = list(projects.values_list("id", flat=True))
+
+        if not deleted_ids:
+            return Response({"detail": "No active project found for given ids."},status=status.HTTP_400_BAD_REQUEST)
+
+        projects.update(
+            is_deleted=True,
+            modified_by=request.user,
+            modified_at=timezone.now()
+        )
+        return Response({"detail": "Projects deleted successfully."},status=status.HTTP_200_OK)
 
 class ProjectDetailView(APIView):
 
@@ -880,11 +963,11 @@ class ProjectDetailView(APIView):
                 {"detail": f" Attachement(s) has been  deleted.", "deleted_ids": sorted(found_ids)},
                 status=status.HTTP_200_OK,
             ) 
-        if project.is_deleted:
-            return Response({"detail": "Project is already deleted."},status=status.HTTP_200_OK)    
-        project.is_deleted= True
-        project.modified_by= request.user
-        project.save(update_fields=['is_deleted','modified_by','modified_at'])
+        # if project.is_deleted:
+        #     return Response({"detail": "Project is already deleted."},status=status.HTTP_200_OK)    
+        # project.is_deleted= True
+        # project.modified_by= request.user
+        # project.save(update_fields=['is_deleted','modified_by','modified_at'])
         return Response({"detail": "Project deleted successfully."}, status=status.HTTP_200_OK)
 
 
@@ -895,7 +978,7 @@ class ProjectTaskListCreateView(APIView):
 
     def get(self, request):
         
-        tasks = ProjectTask.objects.filter.select_related(
+        tasks = ProjectTask.objects.select_related(
             'project',
             'assign_by__profile',
             'assign_to__profile',
@@ -906,10 +989,7 @@ class ProjectTaskListCreateView(APIView):
         )
         is_deleted = request.query_params.get("is_deleted", "false").strip().lower()
         if is_deleted not in ["true", "false"]:
-            return Response(
-                {"is_deleted": "Only true or false is allowed."},
-                status=status.HTTP_400_BAD_REQUEST
-            )
+            return Response({"is_deleted": "Only true or false is allowed."}, status=status.HTTP_400_BAD_REQUEST)
         tasks = tasks.filter(is_deleted=(is_deleted == "true"))
 
         search = request.query_params.get("search", "").strip()
@@ -932,26 +1012,17 @@ class ProjectTaskListCreateView(APIView):
 
         if project:
             if not project.isdigit():
-                return Response(
-                    {"project": "Enter a valid project ID."},
-                    status=status.HTTP_400_BAD_REQUEST
-                )
+                return Response({"project": "Enter a valid project ID."},status=status.HTTP_400_BAD_REQUEST)
             tasks = tasks.filter(project_id=int(project))
 
         if assign_by:
             if not assign_by.isdigit():
-                return Response(
-                    {"assign_by": "Enter a valid user ID."},
-                    status=status.HTTP_400_BAD_REQUEST
-                )
+                return Response({"assign_by": "Enter a valid user ID."},status=status.HTTP_400_BAD_REQUEST)
             tasks = tasks.filter(assign_by_id=int(assign_by))
 
         if assign_to:
             if not assign_to.isdigit():
-                return Response(
-                    {"assign_to": "Enter a valid user ID."},
-                    status=status.HTTP_400_BAD_REQUEST
-                )
+                return Response({"assign_to": "Enter a valid user ID."},status=status.HTTP_400_BAD_REQUEST)
             tasks = tasks.filter(assign_to_id=int(assign_to))
 
         if task_status:
@@ -964,19 +1035,13 @@ class ProjectTaskListCreateView(APIView):
         if task_start_date:
             date_value = parse_date(task_start_date)
             if date_value is None:
-                return Response(
-                    {"task_start_date": "Enter date in YYYY-MM-DD format."},
-                    status=status.HTTP_400_BAD_REQUEST
-                )
+                return Response({"task_start_date": "Enter date in YYYY-MM-DD format."},status=status.HTTP_400_BAD_REQUEST)
             tasks = tasks.filter(task_start_date=date_value)
 
         if task_complete_date:
             date_value = parse_date(task_complete_date)
             if date_value is None:
-                return Response(
-                    {"task_complete_date": "Enter date in YYYY-MM-DD format."},
-                    status=status.HTTP_400_BAD_REQUEST
-                )
+                return Response({"task_complete_date": "Enter date in YYYY-MM-DD format."}, status=status.HTTP_400_BAD_REQUEST)
             tasks = tasks.filter(task_complete_date=date_value)
 
 
@@ -986,19 +1051,13 @@ class ProjectTaskListCreateView(APIView):
         if start_date_from:
             date_value = parse_date(start_date_from)
             if date_value is None:
-                return Response(
-                    {"start_date_from": "Enter date in YYYY-MM-DD format."},
-                    status=status.HTTP_400_BAD_REQUEST
-                )
+                return Response({"start_date_from": "Enter date in YYYY-MM-DD format."},status=status.HTTP_400_BAD_REQUEST)
             tasks = tasks.filter(task_start_date__gte=date_value)
 
         if start_date_to:
             date_value = parse_date(start_date_to)
             if date_value is None:
-                return Response(
-                    {"start_date_to": "Enter date in YYYY-MM-DD format."},
-                    status=status.HTTP_400_BAD_REQUEST
-                )
+                return Response({"start_date_to": "Enter date in YYYY-MM-DD format."},status=status.HTTP_400_BAD_REQUEST)
             tasks = tasks.filter(task_start_date__lte=date_value)
 
 
@@ -1008,10 +1067,7 @@ class ProjectTaskListCreateView(APIView):
         if complete_date_from:
             date_value = parse_date(complete_date_from)
             if date_value is None:
-                return Response(
-                    {"complete_date_from": "Enter date in YYYY-MM-DD format."},
-                    status=status.HTTP_400_BAD_REQUEST
-                )
+                return Response({"complete_date_from": "Enter date in YYYY-MM-DD format."},status=status.HTTP_400_BAD_REQUEST)
             tasks = tasks.filter(task_complete_date__gte=date_value)
 
         if complete_date_to:
@@ -1037,6 +1093,26 @@ class ProjectTaskListCreateView(APIView):
 
         return Response(
             ProjectTaskSerializer(task,context={"request": request}).data,status=status.HTTP_201_CREATED)
+    def patch(self, request):
+        raw = request.query_params.get("ids", "") + "," + str(request.data.get("ids", "")).strip("[]")
+        ids = {int(x) for x in raw.replace(" ", "").split(",")if x.isdigit()}
+
+        if not ids:
+            return Response( {"detail": "Please provide task ids to delete."},status=status.HTTP_400_BAD_REQUEST)
+        tasks = ProjectTask.objects.filter(pk__in=ids,is_deleted=False)
+
+        deleted_ids = list(tasks.values_list("id", flat=True))
+
+        if not deleted_ids:
+            return Response({"detail": "No active task found for given ids."},status=status.HTTP_400_BAD_REQUEST)
+
+        tasks.update(
+            is_deleted=True,
+            modified_by=request.user,
+            modified_at=timezone.now()
+        )
+
+        return Response({"detail": "Tasks deleted successfully."},status=status.HTTP_200_OK)
 
 
 class ProjectTaskDetailView(APIView):
@@ -1064,19 +1140,19 @@ class ProjectTaskDetailView(APIView):
         return Response(
             ProjectTaskSerializer(task,context={"request": request}).data)
 
-    def delete(self, request, id):
-        task = self.get_object(id)
-        task.is_deleted = True
-        task.modified_by = request.user
+    # def delete(self, request, id):
+    #     task = self.get_object(id)
+    #     task.is_deleted = True
+    #     task.modified_by = request.user
 
-        task.save(
-            update_fields=[
-                'is_deleted',
-                'modified_by',
-                'modified_at'
-            ])
+    #     task.save(
+    #         update_fields=[
+    #             'is_deleted',
+    #             'modified_by',
+    #             'modified_at'
+    #         ])
 
-        return Response({"detail": "Task deleted successfully."}, status=status.HTTP_200_OK)
+    #     return Response({"detail": "Task deleted successfully."}, status=status.HTTP_200_OK)
 
 
 # TASK COMMENT
@@ -1123,15 +1199,28 @@ class UserRestoreView(APIView):
         if id:
             ids.add(id)
         users= User.objects.filter(pk__in=ids, status=User.Status.INACTIVE)
-        restored= list(users.values_list("id", flat=True))
-        if not restored:
-            return Response({"detail": "No inactive user found for given ids.", "skipped_ids": sorted(ids)}, status=status.HTTP_400_BAD_REQUEST)
-        users.update(status=User.Status.ACTIVE,modified_by=request.user, modified_at= timezone.now())
-        result= {"detail": f"{len(restored)} user(s) restored.", "restored_ids": sorted(restored)}
-        skipped= sorted(ids - set(restored))
-        if skipped:
-            result["skipped_ids"]= skipped
-        return Response(result)
+        # restored= list(users.values_list("id", flat=True))
+        # if not restored:
+        #     return Response({"detail": "No inactive user found for given ids"}, status=status.HTTP_400_BAD_REQUEST)
+        
+        restored_users = list(users.select_related("profile"))
+        if not restored_users:
+            return Response({"detail": "No inactive user found for given ids."}, status=status.HTTP_400_BAD_REQUEST)
+
+        now = timezone.now()
+        with transaction.atomic():
+            users.update(status=User.Status.ACTIVE,modified_by=request.user, modified_at= now)
+            client_emails = [
+            user.email
+            for user in restored_users
+            if user.profile
+            and user.profile.role
+            and user.profile.role.lower() == "client"
+            and user.email
+        ]
+
+            Client.objects.filter(email__in=client_emails).update(status=Client.Status.ACTIVE,modified_by=request.user,modified_at=now)
+        return Response({"detail": "Users restored successfully."}, status=status.HTTP_200_OK)
 
 
 # CLIENT RESTORE
@@ -1146,14 +1235,10 @@ class ClientRestoreView(APIView):
         clients= Client.objects.filter(pk__in=ids, status=Client.Status.INACTIVE)
         restored= list(clients.values_list("id", flat=True))
         if not restored:
-            return Response({"detail": "No inactive client found for given ids.", "skipped_ids": sorted(ids)}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({"detail": "No inactive client found for given ids."}, status=status.HTTP_400_BAD_REQUEST)
         clients.update(status=Client.Status.ACTIVE, modified_by=request.user, modified_at=timezone.now())
 
-        result= {"detail": f"{len(restored)} client(s) restored.", "restored_ids": sorted(restored)}
-        skipped= sorted(ids - set(restored))
-        if skipped:
-            result["skipped_ids"]= skipped
-        return Response(result)
+        return Response({"detail": "client restored successfully."}, status=status.HTTP_200_OK)
 
 
 # PROJECT RESTORE
@@ -1168,17 +1253,9 @@ class ProjectRestoreView(APIView):
         projects= Project.objects.filter(pk__in=ids, is_deleted=True)
         restored= list(projects.values_list("id", flat=True))
         if not restored:
-            result= {"detail": "No deleted project found for given ids."}
-            if ids:
-                result["skipped_ids"]= sorted(ids)
-            return Response(result, status=status.HTTP_400_BAD_REQUEST)
+            return Response({"detail": "No deleted project found for given ids."}, status=status.HTTP_400_BAD_REQUEST)
         projects.update(is_deleted=False, modified_by=request.user, modified_at=timezone.now())
-
-        result= {"detail": f" project(s) restored.", "restored_ids": sorted(restored)}
-        skipped= sorted(ids - set(restored))
-        if skipped:
-            result["skipped_ids"]= skipped
-        return Response(result)
+        return Response({"detail": "Projects restored successfully."}, status=status.HTTP_200_OK)
 
 
 # TASK RESTORE
@@ -1196,7 +1273,7 @@ class ProjectTaskRestoreView(APIView):
                 'modified_at'
             ])
 
-        return Response({"detail": "Task restored successfully.","restored_id": task.id},status=status.HTTP_200_OK)
+        return Response({"detail": "Task restored successfully."},status=status.HTTP_200_OK)
 
     
 

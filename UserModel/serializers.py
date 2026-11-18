@@ -5,7 +5,7 @@ from .models import User, Client, Project, ProjectAttachement, Profile, ProjectT
 USER_FIELDS= [
     'id','username','email','first_name','last_name',
     'profile','date_of_birth','gender','nationality','image',
-    'blood_group','phone','permanent_address','current_address',
+    'blood_group','phone','country','permanent_address','current_address',
     'emergency_contact_name','emergency_contact_number',
     'emergency_contact_relationship','status','created_by','created_at','modified_by','modified_at'
 ]
@@ -51,6 +51,10 @@ class UserCreateSerializer(serializers.ModelSerializer):
             value= attrs.get(field)
             if value is None or not str(value).strip():
                 raise serializers.ValidationError({field: f"{field} is required."})
+        profile= attrs.get('profile')
+        if profile.role and profile.role.lower() == "client":
+            if Client.objects.filter(email__iexact=attrs['email']).exists():
+                raise serializers.ValidationError({"email": "A client with this email already exists."})
         return attrs
 
     def create(self,validated_data):
@@ -227,6 +231,8 @@ class ClientSerializer(serializers.ModelSerializer):
         ]
         
     def validate_email(self,value):
+        if not value:
+            return value
         value = value.lower()
         clients= Client.objects.filter(email__iexact=value)
         if self.instance:
@@ -236,7 +242,10 @@ class ClientSerializer(serializers.ModelSerializer):
         return value
 
     def validate(self,attrs):
-        required_fields= ["first_name", "last_name","email"]
+        if self.instance is None:
+            required_fields= ["first_name", "last_name","email"]
+        else:
+            required_fields= ["first_name", "last_name"]
 
         for field in required_fields:
             if self.partial and field not in attrs:
@@ -244,6 +253,9 @@ class ClientSerializer(serializers.ModelSerializer):
             value= attrs.get(field)
             if not value or not str(value).strip():
                 raise serializers.ValidationError({field: f"{field} is required."})
+        if self.instance is not None and "email" in attrs:
+            if attrs["email"] != (self.instance.email or "").lower():
+                raise serializers.ValidationError({"email": "Email cannot be updated."})
         return attrs
     def get_created_by(self, obj):
         if obj.created_by is None:

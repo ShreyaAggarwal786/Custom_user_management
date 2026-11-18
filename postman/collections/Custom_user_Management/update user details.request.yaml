@@ -1,10 +1,18 @@
 $kind: http-request
-url: http://127.0.0.1:8000/api/users/16/
+url: http://127.0.0.1:8000/api/users/
 method: PATCH
 body:
   type: json
-  content: '    {"email": "user@yopgmail.com"}'
+  content: "{\r
+
+    \    \"phone\": \"8477356131\",\r
+
+    \    \"status\": \"inactive\"\r
+
+    }"
 auth:
-  type: noauth
+  type: bearer
+  credentials:
+    token: "{{json_web_token_10u6}}"
 examples: .resources/update user details.resources/examples
 order: 6000

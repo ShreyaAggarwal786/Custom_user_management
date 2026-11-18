@@ -48,7 +48,6 @@ class User(AbstractUser, BaseModel):
         related_name= "users",
         blank=True, null=True
     )
-
     username= models.CharField(max_length=100, unique= True, blank=True, null=True)
     email= models.EmailField(unique= True, blank=True, null=True)
     date_of_birth= models.DateField(blank=True, null=True )
@@ -57,6 +56,7 @@ class User(AbstractUser, BaseModel):
     image= models.ImageField(upload_to= "Profile_images/", null= True, blank=True)
     blood_group= models.CharField(max_length=3, choices=Blood_Group.choices, blank=True, null=True)
     phone= models.CharField(max_length=15,blank= True, null=True)
+    country= models.CharField(max_length=100, blank=True,null=True)
     permanent_address= models.TextField( blank=True,  null=True)
     current_address=models.TextField( blank=True,  null=True)
     emergency_contact_name= models.CharField(max_length=50, blank=True, null=True)
@@ -66,11 +66,6 @@ class User(AbstractUser, BaseModel):
     
     otp_code= models.JSONField(default=dict, blank=True,  null=True)
     otp_request_timestamps= models.JSONField(default=list, blank=True, null=True)
-
-    # created_by= models.ForeignKey('self',on_delete= models.SET_NULL,related_name='users_created',null=True, blank=True)
-    # created_at= models.DateTimeField(auto_now_add=True, blank=True,null=True)
-    # modified_by=models.ForeignKey('self',on_delete= models.SET_NULL,related_name='users_modified',null=True, blank=True)
-    # modified_at= models.DateTimeField(auto_now=True, blank=True,null=True)
 
     def __str__(self):
         return self.email or f"User.{self.pk}"
@@ -85,13 +80,11 @@ class Profile(models.Model):
         def __str__(self):
             return self.role or f"Profile.{self.pk}"
 
-
 #client model
 class Client(BaseModel):
     class Status(models.TextChoices):
         ACTIVE="active","Active"
         INACTIVE="inactive","Inactive"
-
 
     first_name= models.CharField(max_length=100,blank=True, null=True)
     last_name= models.CharField(max_length=100, blank=True, null=True)
@@ -100,12 +93,6 @@ class Client(BaseModel):
     address=models.TextField(blank=True, null=True)
     country= models.CharField(max_length=100, blank=True, null=True)
     status= models.CharField(max_length=10, choices= Status.choices, default=Status.ACTIVE,blank=True, null=True)
-
-    # created_by= models.ForeignKey('User',on_delete= models.PROTECT,related_name="clients_created",null=True, blank=True)
-    # created_at=models.DateTimeField(auto_now_add=True,null=True, blank=True)
-    # modified_by= models.ForeignKey('User',on_delete=models.PROTECT,related_name="clients_modified",blank=True, null=True) 
-    # modified_at=models.DateTimeField(auto_now=True, blank=True, null=True)
-
 
     class Meta:
         ordering= ["-id"]
@@ -145,11 +132,7 @@ class Project(BaseModel):
         related_name= "managed_projects",
         null= True, blank=True
     )
-    # created_by= models.ForeignKey('User',on_delete= models.PROTECT,related_name= 'created_projects',null=True, blank=True)
-    # created_at= models.DateTimeField(auto_now_add=True,null=True,blank=True)   
-    # modified_by= models.ForeignKey( 'User',on_delete=models.PROTECT,related_name='modified_projects',null=True, blank=True)
-    # modified_at= models.DateTimeField(auto_now=True,null=True,blank=True)
-        
+    
     def __str__(self):
         return self.project_title or f" Project.{self.pk}"
 
