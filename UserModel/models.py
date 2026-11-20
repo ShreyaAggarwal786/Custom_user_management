@@ -2,6 +2,7 @@
 from django.contrib.auth.models import AbstractUser
 from django.db import models
 from django.conf import settings
+from django.db.models.functions import Lower
 
 class BaseModel(models.Model):
     created_by= models.ForeignKey(
@@ -42,12 +43,7 @@ class User(AbstractUser, BaseModel):
         O_POSITIVE= "O+","O+"
         O_NEGATIVE= "O-","O-"
 
-    profile= models.ForeignKey(
-        'Profile',
-        on_delete= models.SET_NULL,
-        related_name= "users",
-        blank=True, null=True
-    )
+    profile= models.ForeignKey('Profile',on_delete= models.PROTECT,related_name= "users", blank=True, null=True)
     username= models.CharField(max_length=100, unique= True, blank=True, null=True)
     email= models.EmailField(unique= True, blank=True, null=True)
     date_of_birth= models.DateField(blank=True, null=True )
@@ -71,11 +67,16 @@ class User(AbstractUser, BaseModel):
         return self.email or f"User.{self.pk}"
 
 class Profile(models.Model):
-        role= models.CharField(max_length=50, unique=True,blank=True, null=True)
+        role= models.CharField(max_length=50, blank=True, null=True)
         is_default= models.BooleanField(default=False)
 
         class Meta:
             ordering=['-id']
+            constraints=[
+                models.UniqueConstraint(
+                    Lower('role'),
+                    name= 'unique_profile_role'
+            )]
 
         def __str__(self):
             return self.role or f"Profile.{self.pk}"
@@ -100,22 +101,43 @@ class Client(BaseModel):
     def __str__(self):
         return f"{self.first_name} {self.last_name}"
 
+class Project_Type(models.Model):
+    project_type= models.CharField(max_length=100)
+    is_default= models.BooleanField(default=False)
+    class Meta:
+        ordering=['-id']
+        constraints=[models.UniqueConstraint(
+            Lower('project_type'),
+            name= 'unique_project_type'
+        )]
+    def __str__(self):
+        return self.project_type
 
+class Project_Status(models.Model):
+    project_status= models.CharField(max_length=50)
+    is_default= models.BooleanField(default=False)
+    class Meta:
+        ordering=['-id']
+        constraints= [models.UniqueConstraint(
+            Lower('project_status'),
+                  name= 'unique_project_status'
+        )]
+    def __str__(self):
+        return self.project_status
 
 #project model
 class Project(BaseModel):
-    Project_Status=[
+    Project_Status_Choices=[
         ('Active','Active'),
         ('Completed','Completed'),
         ('Inprogress','Inprogress'),
         ('Pending','Pending'),
         ('Inactive','Inactive'),
     ]
-
+    project_type= models.ForeignKey(Project_Type, on_delete=models.PROTECT, related_name="projects", null=True, blank=True)
+    project_status= models.ForeignKey(Project_Status, on_delete=models.PROTECT, related_name="projects", null=True, blank=True)
     project_title= models.CharField(max_length=100, blank=True, null= True)
-    project_type=  models.CharField(max_length=100,  blank=True, null= True)
     description= models.TextField(blank=True, null=True)
-    project_status=  models.CharField(max_length=100, choices=Project_Status, default= 'Inprogress', blank=True, null= True)
     start_date= models.DateField(auto_now_add=True, blank=True, null=True)
     date_of_completion= models.DateField(blank=True, null= True)
     is_deleted= models.BooleanField(default=False)
@@ -126,6 +148,13 @@ class Project(BaseModel):
         related_name="projects",
         null=True, blank=True
 )
+    user_client = models.ForeignKey(
+        'User',
+        on_delete=models.PROTECT,
+        related_name='client_projects',
+        null=True,
+        blank=True
+    )
     manager= models.ForeignKey(
         'User',
         on_delete= models.PROTECT,
@@ -152,33 +181,31 @@ class ProjectAttachement(models.Model):
     def __str__(self):
         return self.file_name or f"Attachement.{self.pk}"
 
+class Task_Status(models.Model):
+    status= models.CharField(max_length=50)
+    is_default= models.BooleanField(default=False)
+    class Meta:
+        ordering=['-id']
+        constraints= [
+            models.UniqueConstraint(
+                Lower('status'),
+                name= 'unique_task_status'
+            )]
+    def __str__(self):
+        return self.status
+
 # Project Task Model
-class ProjectTask(BaseModel):
-
-    STATUS_CHOICES = [
-        ('Pending', 'Pending'),
-        ('Active', 'Active'),
-        ('Inactive', 'Inactive'),
-        ('Inprogress', 'Inprogress'),
-        ('Completed', 'Completed'),
-        ('On Hold', 'On Hold'),
-        ('Cancelled', 'Cancelled'),
-    ]
-
-    project = models.ForeignKey('Project',on_delete=models.PROTECT,related_name='tasks',null=True,blank=True)
-    assign_by = models.ForeignKey('User',on_delete=models.PROTECT,related_name='assigned_by_tasks',null=True,blank=True)
-    assign_to = models.ForeignKey('User',on_delete=models.PROTECT,related_name='assigned_tasks',null=True,blank=True)
+class ProjectTask(BaseModel): 
+    task_status= models.ForeignKey(Task_Status, on_delete=models.PROTECT, related_name= "project_tasks", null=True, blank=True)
+    project = models.ForeignKey('Project', on_delete=models.PROTECT, related_name='tasks', null=True, blank=True)
+    assign_by = models.ForeignKey('User', on_delete=models.PROTECT, related_name='assigned_by_tasks', null=True, blank=True)
+    assign_to = models.ForeignKey('User', on_delete=models.PROTECT, related_name='assigned_tasks', null=True, blank=True)
     title = models.CharField(max_length=200, null=True, blank=True)
     description = models.TextField(null=True, blank=True)
-    task_status = models.CharField(max_length=20,choices=STATUS_CHOICES,default='Pending',null=True,blank=True)
     is_deleted = models.BooleanField(default=False)
-    task_start_date = models.DateField(auto_now_add=True,null=True,blank=True)
+    task_start_date = models.DateField(auto_now_add=True, null=True, blank=True)
     task_complete_date = models.DateField(null=True, blank=True)
-    # created_at = models.DateTimeField(auto_now_add=True, null=True, blank=True)
-    # created_by = models.ForeignKey('User',on_delete=models.PROTECT,related_name='created_tasks',null=True,blank=True)
-    # updated_at = models.DateTimeField(auto_now=True, null=True, blank=True)
-    # updated_by = models.ForeignKey('User',on_delete=models.PROTECT,related_name='updated_tasks',null=True,blank=True)
-
+    
     class Meta:
         ordering = ['-id']
         constraints = [
@@ -186,7 +213,6 @@ class ProjectTask(BaseModel):
                 fields=['project', 'title'],
                 name='unique_task_title_per_project'
             )]
-
     def __str__(self):
         return self.title or f"Task.{self.pk}"
 

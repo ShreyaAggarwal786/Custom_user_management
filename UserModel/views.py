@@ -13,13 +13,14 @@ from django.db.models import Q
 from django.core.mail import send_mail
 from django.utils import timezone
 from django.utils.dateparse import parse_date
-from .models import  User, Client, Project, ProjectAttachement, Profile, ProjectTask, TaskComment
+from django.db.models.deletion import ProtectedError
+from .models import  User, Client, Project,Project_Type, Project_Status, ProjectAttachement, Profile, ProjectTask, Task_Status, TaskComment
 from .serializers import(
-    UserCreateSerializer,UserSerializer,UserUpdateSerializer,
+    UserCreateSerializer,UserSerializer,UserUpdateSerializer,ProfileSerializer,
     ForgotPasswordSerializer,ResetPasswordSerializer,
     SendOTPSerializer,VerifyOTPSerializer,LoginSerializer,
     ClientSerializer,ProjectSerializer,ProjectAttachementSerializer,
-    ProfileSerializer, ProjectTaskSerializer,TaskCommentSerializer,
+    ProjectTypeSerializer,ProjectStatusSerializer,TaskStatusSerializer, ProjectTaskSerializer,TaskCommentSerializer,
 )
 
 from .utils import(PASSWORD_RESET, VERIFY, send_otp, send_welcome_email, verify_otp,)
@@ -36,6 +37,12 @@ class UserListCreateView(APIView):
 
     def get(self,request):
         users=User.objects.order_by('id')
+        has_admin_access=(
+            request.user.profile is not None and 
+            request.user.profile.role.lower() in['super admin','admin']
+        )
+        if not has_admin_access:
+            users= users.filter(id=request.user.id)
 
        
         search = request.query_params.get("search", "").strip()
@@ -125,23 +132,18 @@ class UserListCreateView(APIView):
                 created_by=request.user,
                 modified_by=request.user
             )
-            if user.profile and user.profile.role.lower() == "client":
-                Client.objects.create(
-                    first_name=user.first_name,
-                    last_name=user.last_name,
-                    email=user.email,
-                    contact_number=user.phone,
-                    address=user.current_address,
-                    country=user.country,
-                    status=user.status,
-                    created_by=request.user,
-                    modified_by=request.user,
-                )
-        # user= serializer.save(
-        #     created_by=request.user,
-        #     modified_by=request.user
-        # )
-        
+            # if user.profile and user.profile.role.lower() == "client":
+            #     Client.objects.create(
+            #         first_name=user.first_name,
+            #         last_name=user.last_name,
+            #         email=user.email,
+            #         contact_number=user.phone,
+            #         address=user.current_address,
+            #         country=user.country,
+            #         status=user.status,
+            #         created_by=request.user,
+            #         modified_by=request.user,
+            #     )
 
         try:
             send_welcome_email(user)
@@ -179,12 +181,18 @@ class UserListCreateView(APIView):
 class UserDetailView(APIView):
     permission_classes=[IsAuthenticated]
 
-
     def get_object(self,id):
         return get_object_or_404(User, pk=id)
 
     def get(self,request,id):
         user= self.get_object(id)
+        has_admin_access=(
+            request.user.profile is not None and
+            request.user.profile.role.lower() in ['super admin','admin']
+        )
+        if not has_admin_access and user.id != request.user.id:
+            return Response({"detail": "you can only access your own data."},status=status.HTTP_403_FORBIDDEN)
+        
         if user.status == User.Status.INACTIVE:
             return Response({"detail": "User is inactive."}, status=status.HTTP_400_BAD_REQUEST)
         serializer= UserSerializer(user, context={"request": request})
@@ -198,28 +206,35 @@ class UserDetailView(APIView):
 
     def _update(self, request, id, partial):
         user = self.get_object(id)
-        if (
-            request.user.profile is None
-            or request.user.profile.role.lower() not in ["super admin", "admin"]):
-            return Response({"detail": "Only Super Admin and Admin can modify users."},status=status.HTTP_403_FORBIDDEN)
+        has_admin_access=(
+            request.user.profile is not None and 
+            request.user.profile.role.lower() in['super admin','admin']
+        )
+        if not has_admin_access and user.id != request.user.id:
+            return Response({"detail": "you can only modify your own data."},status=status.HTTP_403_FORBIDDEN)
+
+        if not has_admin_access and "profile" in request.data:
+            return Response({"detail": "You cannot change your own profile."},status=status.HTTP_403_FORBIDDEN)
 
         serializer= UserUpdateSerializer(
             user, data=request.data, partial=partial, context={"request": request})
+        # with transaction.atomic():
+        #     user = serializer.save(modified_by=request.user)
+
+        #     if user.profile and user.profile.role.lower() == "client":
+        #         updated = Client.objects.filter(email__iexact=user.email).update(
+        #             first_name=user.first_name,
+        #             last_name=user.last_name,
+        #             contact_number=user.phone,
+        #             address=user.current_address,
+        #             country=user.country,
+        #             modified_by=request.user,
+        #             modified_at=timezone.now(),
+        #         )
+        #         if not updated:
+        #             raise ValidationError({"detail": "Client record does not exist for this user."})
         serializer.is_valid(raise_exception=True)
-        with transaction.atomic():
-            user=serializer.save(modified_by=request.user)
-            if user.profile and user.profile.role.lower() == "client":
-                updated= Client.objects.filter(email__iexact=user.email).update(
-                    first_name=user.first_name,
-                    last_name=user.last_name,
-                    contact_number=user.phone,
-                    address=user.current_address,
-                    country=user.country,
-                    modified_by=request.user,
-                    modified_at=timezone.now(),
-                )
-                if not updated:
-                    raise ValidationError({"detail": "Client record does not exist for this user."})
+        user=serializer.save(modified_by=request.user)
         return Response(UserSerializer(user, context={"request":request}).data)
 
     # def delete(self,request, id):
@@ -231,6 +246,120 @@ class UserDetailView(APIView):
     #     user.modified_by= request.user
     #     user.save(update_fields=["status","modified_by"])
     #     return Response({"detail": "User is deleted successfully."}, status=status.HTTP_200_OK)
+
+
+#profile
+DEFAULT_PROFILES=[
+    "Super Admin",
+    "Admin",
+    "Manager",
+    "Team Leader",
+    "Developer",
+    "Human Resources",
+    "Client",
+]
+
+class ProfileListCreateView(APIView):
+    permission_classes=[AllowAny]
+
+    def initial(self,request,*args, **kwargs):
+        super().initial(request, *args, **kwargs)
+        Profile.objects.exclude(role__in= DEFAULT_PROFILES).update(is_default=False)
+        for role in DEFAULT_PROFILES:
+            profile= Profile.objects.filter(role__iexact= role).first()
+            if profile:
+                profile.is_default=True
+                profile.save(update_fields=['is_default'])
+            else:
+                Profile.objects.create(role=role, is_default=True)
+
+    def get(self, request):
+        value = request.query_params.get("profile", "").strip()
+
+        if value.lower() == "null":
+            return Response({"detail": "Invalid URL parameter."},status=status.HTTP_400_BAD_REQUEST)
+        if value:
+            profile = None
+            if value.isdigit():
+                profile = Profile.objects.filter(pk=int(value)).first()
+            if profile is None:
+                profile = Profile.objects.filter(role__iexact=value).first()
+            if profile is None:
+                return Response({"profile": "Profile does not exist."},
+                                status=status.HTTP_404_NOT_FOUND)
+
+            users = (User.objects.filter(profile=profile)
+                     .order_by("id").values("id", "email"))
+            return Response(list(users))
+
+
+        profiles= Profile.objects.all().order_by("id")
+
+        profile_id = request.query_params.get("profile_id", "").strip()
+        role = request.query_params.get("role", "").strip()
+        is_default = request.query_params.get("is_default", "").strip().lower()
+
+        if profile_id:
+            if not profile_id.isdigit():
+                return Response({"profile_id": "Enter a valid profile ID."},status=status.HTTP_400_BAD_REQUEST)
+            profiles = profiles.filter(id=int(profile_id))
+
+        if role:
+            profiles = profiles.filter(role__icontains=role)
+
+        if is_default:
+            if is_default not in ["true", "false"]:
+                return Response({"is_default": "Only true or false is allowed."},status=status.HTTP_400_BAD_REQUEST)
+            profiles = profiles.filter(is_default=(is_default == "true"))
+
+        paginator= Pagination()
+        page= paginator.paginate_queryset(profiles, request, view=self)
+        serializer= ProfileSerializer(page, many=True, context={"request":request})
+        return paginator.get_paginated_response(serializer.data)
+
+    def post(self, request):
+        serializer= ProfileSerializer(data=request.data, context={"request":request})
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+class ProfileDetailView(APIView):
+    permission_classes=[AllowAny]
+
+    def get_object(self, id):
+        return get_object_or_404(Profile, pk=id)
+
+    def get(self, request, id):
+        profile= self.get_object(id)
+        serializer= ProfileSerializer(profile, context={"request":request})
+        return Response(serializer.data)
+
+    def put(self, request, id):
+        return self._update(request, id, partial=False)
+
+    def patch(self, request, id):
+        return self._update(request, id, partial=True)
+
+    def _update(self, request, id, partial):
+        profile= self.get_object(id)
+        if profile.is_default:
+            return Response({"detail":"Default profile cannot be modified."}, status= status.HTTP_400_BAD_REQUEST)
+        serializer= ProfileSerializer(profile, data=request.data, partial=partial, context={"request":request})
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(serializer.data)
+
+    def delete(self, request, id):
+        profile = Profile.objects.get(pk=id)
+
+        if profile.is_default:
+            return Response({"detail":"Default profile cannot be deleted."},status=status.HTTP_400_BAD_REQUEST)
+        try:
+            profile.delete()
+        except ProtectedError:
+            return Response({"detail": "This profile is being used and cannot be deleted."},status=status.HTTP_400_BAD_REQUEST)
+        profile.delete()                         
+        return Response({"detail": "Profile Deleted successfully"}, status=status.HTTP_200_OK)
 
     
 
@@ -378,112 +507,6 @@ class LoginView(APIView):
         )
 
 
-#profile
-DEFAULT_PROFILES=[
-    "Super Admin",
-    "Admin",
-    "Manager",
-    "Team Leader",
-    "Developer",
-    "Human Resources",
-    "Client",
-]
-
-class ProfileListCreateView(APIView):
-    permission_classes=[AllowAny]
-
-    def initial(self,request,*args, **kwargs):
-        super().initial(request, *args, **kwargs)
-        Profile.objects.exclude(role__in= DEFAULT_PROFILES).update(is_default=False)
-        for role in DEFAULT_PROFILES:
-            Profile.objects.update_or_create(role= role, defaults={"is_default":True})
-
-    def get(self, request):
-        value = request.query_params.get("profile", "").strip()
-
-        if value.lower() == "null":
-            return Response({"detail": "Invalid URL parameter."},status=status.HTTP_400_BAD_REQUEST)
-        if value:
-            profile = None
-            if value.isdigit():
-                profile = Profile.objects.filter(pk=int(value)).first()
-            if profile is None:
-                profile = Profile.objects.filter(role__iexact=value).first()
-            if profile is None:
-                return Response({"profile": "Profile does not exist."},
-                                status=status.HTTP_404_NOT_FOUND)
-
-            users = (User.objects.filter(profile=profile)
-                     .order_by("id").values("id", "email"))
-            return Response(list(users))
-
-
-        profiles= Profile.objects.all().order_by("id")
-
-        profile_id = request.query_params.get("profile_id", "").strip()
-        role = request.query_params.get("role", "").strip()
-        is_default = request.query_params.get("is_default", "").strip().lower()
-
-        if profile_id:
-            if not profile_id.isdigit():
-                return Response({"profile_id": "Enter a valid profile ID."},status=status.HTTP_400_BAD_REQUEST)
-            profiles = profiles.filter(id=int(profile_id))
-
-        if role:
-            profiles = profiles.filter(role__icontains=role)
-
-        if is_default:
-            if is_default not in ["true", "false"]:
-                return Response({"is_default": "Only true or false is allowed."},status=status.HTTP_400_BAD_REQUEST)
-            profiles = profiles.filter(is_default=(is_default == "true"))
-
-        paginator= Pagination()
-        page= paginator.paginate_queryset(profiles, request, view=self)
-        serializer= ProfileSerializer(page, many=True, context={"request":request})
-        return paginator.get_paginated_response(serializer.data)
-
-    def post(self, request):
-        serializer= ProfileSerializer(data=request.data, context={"request":request})
-        serializer.is_valid(raise_exception=True)
-        serializer.save()
-        return Response(serializer.data, status=status.HTTP_201_CREATED)
-
-class ProfileDetailView(APIView):
-    permission_classes=[AllowAny]
-
-    def get_object(self, id):
-        return get_object_or_404(Profile, pk=id)
-
-    def get(self, request, id):
-        profile= self.get_object(id)
-        serializer= ProfileSerializer(profile, context={"request":request})
-        return Response(serializer.data)
-
-    def put(self, request, id):
-        return self._update(request, id, partial=False)
-
-    def patch(self, request, id):
-        return self._update(request, id, partial=True)
-
-    def _update(self, request, id, partial):
-        profile= self.get_object(id)
-        if profile.is_default:
-            return Response({"detail":"Default profile cannot be modified."}, status= status.HTTP_400_BAD_REQUEST)
-        serializer= ProfileSerializer(profile, data=request.data, partial=partial, context={"request":request})
-        serializer.is_valid(raise_exception=True)
-        serializer.save()
-        return Response(serializer.data)
-
-    def delete(self, request, id):
-        profile = Profile.objects.get(pk=id)
-
-        if profile.is_default:
-            return Response({"detail":"Default profile cannot be deleted."},status=status.HTTP_400_BAD_REQUEST)
-        profile.delete()                         
-        return Response({"detail": "Profile Deleted successfully"}, status=status.HTTP_200_OK)
-
-
-
 #CLIENTS
 
 class ClientListCreateView(APIView):
@@ -607,10 +630,261 @@ class ClientDetailView(APIView):
     #     return Response({"detail": "Client Deactivated"},status= status.HTTP_200_OK)
 
 
+# PROJECT TYPE
+DEFAULT_PROJECT_TYPES = [
+    "Web Development",
+    "App Development",
+    "Software Development",
+    "UI/UX Design",
+    "Digital Marketing",
+]
+class ProjectTypeListCreateView(APIView):
+    permission_classes = [AllowAny]
+
+    def initial(self, request, *args, **kwargs):
+        super().initial(request, *args, **kwargs)
+
+        Project_Type.objects.update(is_default=False)
+
+        for value in DEFAULT_PROJECT_TYPES:
+            project_type = Project_Type.objects.filter(project_type__iexact=value).first()
+            if project_type:
+                project_type.is_default = True
+                project_type.save(update_fields=['is_default'])
+            else:
+                Project_Type.objects.create(project_type=value,is_default=True)
+
+    def get(self, request):
+        project_types = Project_Type.objects.all().order_by("id")
+        project_type_id = request.query_params.get("project_type_id", "").strip()
+        project_type = request.query_params.get("project_type", "").strip()
+        is_default = request.query_params.get("is_default", "").strip().lower()
+
+        if project_type_id:
+            if not project_type_id.isdigit():
+                return Response({"project_type_id": "Enter a valid project type ID."},status=status.HTTP_400_BAD_REQUEST)
+            project_types = project_types.filter(id=int(project_type_id))
+
+        if project_type:
+            project_types = project_types.filter(project_type__icontains=project_type)
+
+        if is_default:
+            if is_default not in ["true", "false"]:
+                return Response({"is_default": "Only true or false is allowed."},status=status.HTTP_400_BAD_REQUEST)
+            project_types = project_types.filter(is_default=(is_default == "true"))
+
+        paginator = Pagination()
+        page = paginator.paginate_queryset(project_types, request, view=self)
+        serializer = ProjectTypeSerializer(page, many=True, context={"request": request})
+        return paginator.get_paginated_response(serializer.data)
+
+    def post(self, request):
+        serializer = ProjectTypeSerializer(data=request.data, context={"request": request})
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(serializer.data,status=status.HTTP_201_CREATED)
+
+
+class ProjectTypeDetailView(APIView):
+    permission_classes = [AllowAny]
+
+    def get_object(self, id):
+        return get_object_or_404(Project_Type, pk=id)
+
+    def get(self, request, id):
+        project_type = self.get_object(id)
+        serializer = ProjectTypeSerializer(project_type, context={"request": request})
+        return Response(serializer.data)
+
+    def put(self, request, id):
+        return self._update(request, id, partial=False)
+
+    def patch(self, request, id):
+        return self._update(request, id, partial=True)
+
+    def _update(self, request, id, partial):
+        project_type = self.get_object(id)
+        if project_type.is_default:
+            return Response({"detail": "Default project type cannot be modified."},status=status.HTTP_400_BAD_REQUEST )
+
+        serializer = ProjectTypeSerializer( project_type,data=request.data,partial=partial,context={"request": request})
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(serializer.data)
+
+    def delete(self, request, id):
+        project_type = self.get_object(id)
+        if project_type.is_default:
+            return Response({"detail": "Default project type cannot be deleted."},status=status.HTTP_400_BAD_REQUEST)
+        try:
+            project_type.delete()
+        except ProtectedError:
+            return Response({"detail": "This project type is being used in a project and cannot be deleted."},status=status.HTTP_400_BAD_REQUEST)
+        return Response({"detail": "Project type deleted successfully."},status=status.HTTP_200_OK)
+
+
+# PROJECT STATUS
+DEFAULT_PROJECT_STATUSES = [
+    "Active",
+    "Completed",
+    "Inprogress",
+    "Pending",
+    "Inactive",
+]
+class ProjectStatusListCreateView(APIView):
+    permission_classes = [AllowAny]
+
+    def initial(self, request, *args, **kwargs):
+        super().initial(request, *args, **kwargs)
+
+        Project_Status.objects.update(is_default=False)
+
+        for value in DEFAULT_PROJECT_STATUSES:
+            project_status = Project_Status.objects.filter(project_status__iexact=value).first()
+            if project_status:
+                project_status.is_default = True
+                project_status.save(update_fields=['is_default'])
+            else:
+                Project_Status.objects.create(project_status=value, is_default=True)
+
+    def get(self, request):
+        project_statuses = Project_Status.objects.all().order_by("id")
+        project_status_id = request.query_params.get( "project_status_id", "").strip()
+        project_status = request.query_params.get("project_status", "").strip()
+        is_default = request.query_params.get("is_default", "").strip().lower()
+
+        if project_status_id:
+            if not project_status_id.isdigit():
+                return Response({"project_status_id": "Enter a valid project status ID."}, status=status.HTTP_400_BAD_REQUEST)
+            project_statuses = project_statuses.filter(id=int(project_status_id))
+
+        if project_status:
+            project_statuses = project_statuses.filter( project_status__icontains=project_status)
+
+        if is_default:
+            if is_default not in ["true", "false"]:
+                return Response({"is_default": "Only true or false is allowed."},status=status.HTTP_400_BAD_REQUEST)
+            project_statuses = project_statuses.filter( is_default=(is_default == "true"))
+
+        paginator = Pagination()
+        page = paginator.paginate_queryset(project_statuses, request, view=self)
+        serializer = ProjectStatusSerializer(page, many=True, context={"request": request})
+        return paginator.get_paginated_response(serializer.data)
+
+    def post(self, request):
+        serializer = ProjectStatusSerializer(data=request.data, context={"request": request})
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+
+        return Response(serializer.data,status=status.HTTP_201_CREATED)
+
+
+class ProjectStatusDetailView(APIView):
+    permission_classes = [AllowAny]
+
+    def get_object(self, id):
+        return get_object_or_404(Project_Status, pk=id)
+
+    def get(self, request, id):
+        project_status = self.get_object(id)
+        serializer = ProjectStatusSerializer(project_status, context={"request": request})
+        return Response(serializer.data)
+
+    def put(self, request, id):
+        return self._update(request, id, partial=False)
+
+    def patch(self, request, id):
+        return self._update(request, id, partial=True)
+
+    def _update(self, request, id, partial):
+        project_status = self.get_object(id)
+        if project_status.is_default:
+            return Response({"detail": "Default project status cannot be modified."},status=status.HTTP_400_BAD_REQUEST)
+
+        serializer = ProjectStatusSerializer(project_status, data=request.data, partial=partial, context={"request": request})
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(serializer.data)
+
+    def delete(self, request, id):
+        project_status = self.get_object(id)
+        if project_status.is_default:
+            return Response({"detail": "Default project status cannot be deleted."},status=status.HTTP_400_BAD_REQUEST)
+        try:
+            project_status.delete()
+        except ProtectedError:
+            return Response({"detail": "This project status is being used in a project and cannot be deleted."},status=status.HTTP_400_BAD_REQUEST)
+        return Response({"detail": "Project status deleted successfully."},status=status.HTTP_200_OK)
+
+
+# TASK STATUS
+DEFAULT_TASK_STATUSES = [
+    "Pending",
+    "Active",
+    "Inactive",
+    "Inprogress",
+    "Completed",
+    "On Hold",
+    "Cancelled",
+]
+class TaskStatusListCreateView(APIView):
+    permission_classes = [AllowAny]
+
+    def initial(self, request, *args, **kwargs):
+        super().initial(request, *args, **kwargs)
+
+        Task_Status.objects.update(is_default=False)
+
+        for value in DEFAULT_TASK_STATUSES:
+            task_status = Task_Status.objects.filter(status__iexact=value).first()
+
+            if task_status:
+                task_status.is_default = True
+                task_status.save(update_fields=['is_default'])
+            else:
+                Task_Status.objects.create(
+                    status=value,
+                    is_default=True
+                )
+
+    def get(self, request):
+        task_statuses = Task_Status.objects.all().order_by("id")
+
+        task_status_id = request.query_params.get("task_status_id", "").strip()
+        task_status = request.query_params.get( "status", "").strip()
+        is_default = request.query_params.get( "is_default", "").strip().lower()
+
+        if task_status_id:
+            if not task_status_id.isdigit():
+                return Response({"task_status_id": "Enter a valid task status ID."},status=status.HTTP_400_BAD_REQUEST)
+            task_statuses = task_statuses.filter(id=int(task_status_id))
+
+        if task_status:
+            task_statuses = task_statuses.filter(status__icontains=task_status)
+
+        if is_default:
+            if is_default not in ["true", "false"]:
+                return Response({"is_default": "Only true or false is allowed."},status=status.HTTP_400_BAD_REQUEST)
+            task_statuses = task_statuses.filter(is_default=(is_default == "true"))
+
+        paginator = Pagination()
+        page = paginator.paginate_queryset(task_statuses, request, view=self)
+        serializer = TaskStatusSerializer(page, many=True, context={"request": request})
+        return paginator.get_paginated_response(serializer.data)
+
+    def post(self, request):
+        serializer = TaskStatusSerializer(data=request.data, context={"request": request})
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(serializer.data,status=status.HTTP_201_CREATED)
+
+
+
+
 #project
 #send client notification
 def send_client_notification(project):
-    client= project.client
+    client= project.client or project.user_client
     if not client or not client.email:
         return False
     
@@ -638,7 +912,8 @@ def send_client_notification(project):
             subject=f"New Project Assigned: {project.project_title}",
             message=message,
             from_email=settings.EMAIL_HOST_USER,
-            recipient_list=[project.client.email],
+            recipient_list=[client.email]
+            # recipient_list=[project.client.email],
         )
     except Exception:
         print("Client email failed")
@@ -649,7 +924,7 @@ def send_manager_notification(project):
     manager= project.manager
     if not manager or not manager.email:
         return False
-    client = project.client
+    client = project.client or project.user_client
     if client is not None:
         client_info= (
             f"Name: {client.first_name} {client.last_name}\n"
@@ -686,7 +961,7 @@ class ProjectListCreateView(APIView):
 
     def get(self, request):
         projects= Project.objects.select_related(
-            'client','manager','created_by','modified_by'
+            'client','user_client','manager','created_by','modified_by','project_type','project_status'
         ).order_by("-id")
 
         if request.query_params.get("is_deleted","").lower() == "true":
@@ -699,11 +974,14 @@ class ProjectListCreateView(APIView):
             for word in search.split():
                 projects= projects.filter(
                     Q(project_title__icontains=word) |
-                    Q(project_type__icontains=word) |
+                    Q(project_type__project_type__icontains=word) |
                     Q(description__icontains=word) |
                     Q(client__first_name__icontains=word) |
                     Q(client__last_name__icontains=word) |
                     Q(client__email__icontains=word) |
+                    Q(user_client__first_name__icontains=word) |
+                    Q(user_client__last_name__icontains=word) |
+                    Q(user_client__email__icontains=word)|
                     Q(manager__first_name__icontains=word) |
                     Q(manager__last_name__icontains=word) |
                     Q(manager__email__icontains=word)
@@ -717,6 +995,8 @@ class ProjectListCreateView(APIView):
         project_status= request.query_params.get("project_status", "").strip()
         client= request.query_params.get("client", "").strip()
         client_id = request.query_params.get("client_id", "").strip()
+        user_client= request.query_params.get("user_client", "").strip()
+        user_client_id = request.query_params.get("user_client_id", "").strip()
         manager= request.query_params.get("manager", "").strip()
         manager_id = request.query_params.get("manager_id", "").strip()
         manager_profile_id = request.query_params.get("manager_profile_id", "").strip()
@@ -730,11 +1010,11 @@ class ProjectListCreateView(APIView):
         if project_title:
             projects= projects.filter(project_title__icontains=project_title)
         if project_type:
-            projects= projects.filter(project_type__icontains=project_type)
+            projects= projects.filter(project_type__project_type__icontains=project_type)
         if description:
             projects= projects.filter(description__icontains=description)
         if project_status:
-            projects= projects.filter(project_status__iexact=project_status)
+            projects= projects.filter(project_status__project_status__iexact=project_status)
 
         if client.isdigit():
             projects= projects.filter(client_id=int(client))        
@@ -753,6 +1033,34 @@ class ProjectListCreateView(APIView):
         if client_email:
             projects = projects.filter(client__email__icontains=client_email)
 
+        if user_client.isdigit():
+            projects= projects.filter(user_client_id=int(client))        
+        user_client_first_name = request.query_params.get("client_first_name")
+        user_client_last_name = request.query_params.get("client_last_name")
+        user_client_email = request.query_params.get("client_email")
+
+        if user_client_id:
+            if not user_client_id.isdigit():
+                return Response(
+                    {"user_client_id": "Enter a valid user client ID."},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            projects = projects.filter(user_client_id=int(user_client_id))
+
+        if user_client_first_name:
+            projects = projects.filter(
+                user_client__first_name__icontains=user_client_first_name
+            )
+
+        if user_client_last_name:
+            projects = projects.filter(
+                user_client__last_name__icontains=user_client_last_name
+            )
+
+        if user_client_email:
+            projects = projects.filter(
+                user_client__email__icontains=user_client_email
+            )
 
         if manager.isdigit():
             projects= projects.filter(manager_id=int(manager))
@@ -780,7 +1088,7 @@ class ProjectListCreateView(APIView):
 
         project_status= request.query_params.get("project_status","").strip()
         if project_status:                                                   # CHANGE
-            projects= projects.filter(project_status__iexact=project_status)
+            projects= projects.filter(project_status__project_status__iexact=project_status)
         if start_date:
             date_value = parse_date(start_date)
             if date_value is None:
@@ -793,6 +1101,11 @@ class ProjectListCreateView(APIView):
                 return Response({"date_of_completion": "Enter date in YYYY-MM-DD format."},status=status.HTTP_400_BAD_REQUEST)
             projects = projects.filter(date_of_completion=date_value)
 
+        projects = projects.filter(
+            Q(user_client=request.user) |
+            Q(manager=request.user)
+        )
+        
         paginator= Pagination()
         page= paginator.paginate_queryset(projects, request, view=self)
         serializer= ProjectSerializer(
@@ -852,6 +1165,10 @@ class ProjectDetailView(APIView):
         project= self.get_object(id)
         if project.is_deleted == True:
             return Response({"detail": "Project is deleted."},status= status.HTTP_400_BAD_REQUEST)
+        
+        if project.user_client_id != request.user.id and project.manager_id != request.user.id:
+            return Response({"detail": "You do not have permission to access this project."},status=status.HTTP_403_FORBIDDEN)
+        
         serializer= ProjectSerializer(project, context={"request": request})
         return Response(serializer.data)
 
@@ -959,17 +1276,106 @@ class ProjectDetailView(APIView):
 
             for storage, name in files_to_remove:
                 storage.delete(name)           
-            return Response(
-                {"detail": f" Attachement(s) has been  deleted.", "deleted_ids": sorted(found_ids)},
-                status=status.HTTP_200_OK,
-            ) 
-        # if project.is_deleted:
-        #     return Response({"detail": "Project is already deleted."},status=status.HTTP_200_OK)    
-        # project.is_deleted= True
-        # project.modified_by= request.user
-        # project.save(update_fields=['is_deleted','modified_by','modified_at'])
-        return Response({"detail": "Project deleted successfully."}, status=status.HTTP_200_OK)
+            return Response({"detail": f" Attachement(s) has been  deleted.", "deleted_ids": sorted(found_ids)},status=status.HTTP_200_OK,) 
+        
+# TASK STATUS
+DEFAULT_TASK_STATUSES = [
+    "Pending",
+    "Active",
+    "Inactive",
+    "Inprogress",
+    "Completed",
+    "On Hold",
+    "Cancelled",
+]
+class TaskStatusListCreateView(APIView):
+    permission_classes = [AllowAny]
 
+    def initial(self, request, *args, **kwargs):
+        super().initial(request, *args, **kwargs)
+
+        Task_Status.objects.update(is_default=False)
+
+        for value in DEFAULT_TASK_STATUSES:
+            task_status = Task_Status.objects.filter(status__iexact=value).first()
+
+            if task_status:
+                task_status.is_default = True
+                task_status.save(update_fields=['is_default'])
+            else:
+                Task_Status.objects.create(
+                    status=value,
+                    is_default=True
+                )
+
+    def get(self, request):
+        task_statuses = Task_Status.objects.all().order_by("id")
+
+        task_status_id = request.query_params.get("task_status_id", "").strip()
+        task_status = request.query_params.get( "status", "").strip()
+        is_default = request.query_params.get( "is_default", "").strip().lower()
+
+        if task_status_id:
+            if not task_status_id.isdigit():
+                return Response({"task_status_id": "Enter a valid task status ID."},status=status.HTTP_400_BAD_REQUEST)
+            task_statuses = task_statuses.filter(id=int(task_status_id))
+
+        if task_status:
+            task_statuses = task_statuses.filter(status__icontains=task_status)
+
+        if is_default:
+            if is_default not in ["true", "false"]:
+                return Response({"is_default": "Only true or false is allowed."},status=status.HTTP_400_BAD_REQUEST)
+            task_statuses = task_statuses.filter(is_default=(is_default == "true"))
+
+        paginator = Pagination()
+        page = paginator.paginate_queryset(task_statuses, request, view=self)
+        serializer = TaskStatusSerializer(page, many=True, context={"request": request})
+        return paginator.get_paginated_response(serializer.data)
+
+    def post(self, request):
+        serializer = TaskStatusSerializer(data=request.data, context={"request": request})
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(serializer.data,status=status.HTTP_201_CREATED)
+
+
+class TaskStatusDetailView(APIView):
+    permission_classes = [AllowAny]
+
+    def get_object(self, id):
+        return get_object_or_404(Task_Status, pk=id)
+
+    def get(self, request, id):
+        task_status = self.get_object(id)
+        serializer = TaskStatusSerializer(task_status, context={"request": request})
+        return Response(serializer.data)
+
+    def put(self, request, id):
+        return self._update(request, id, partial=False)
+
+    def patch(self, request, id):
+        return self._update(request, id, partial=True)
+
+    def _update(self, request, id, partial):
+        task_status = self.get_object(id)
+        if task_status.is_default:
+            return Response({"detail": "Default task status cannot be modified."},status=status.HTTP_400_BAD_REQUEST)
+
+        serializer = TaskStatusSerializer( task_status,data=request.data,partial=partial,context={"request": request})
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(serializer.data)
+
+    def delete(self, request, id):
+        task_status = self.get_object(id)
+        if task_status.is_default:
+            return Response({"detail": "Default task status cannot be deleted."},status=status.HTTP_400_BAD_REQUEST)
+        try:
+            task_status.delete()
+        except ProtectedError:
+            return Response({"detail": "This task status is being used in a task and cannot be deleted."},status=status.HTTP_400_BAD_REQUEST)
+        return Response({"detail": "Task status deleted successfully."},status=status.HTTP_200_OK)
 
 
 # PROJECT TASK
@@ -980,6 +1386,7 @@ class ProjectTaskListCreateView(APIView):
         
         tasks = ProjectTask.objects.select_related(
             'project',
+            'task_status',
             'assign_by__profile',
             'assign_to__profile',
             'created_by__profile',
@@ -1026,7 +1433,7 @@ class ProjectTaskListCreateView(APIView):
             tasks = tasks.filter(assign_to_id=int(assign_to))
 
         if task_status:
-            tasks = tasks.filter(task_status__iexact=task_status)
+            tasks = tasks.filter(task_status__status__iexact=task_status)
 
 
         task_start_date = request.query_params.get("task_start_date", "").strip()
@@ -1079,6 +1486,10 @@ class ProjectTaskListCreateView(APIView):
                 )
             tasks = tasks.filter(task_complete_date__lte=date_value)
 
+        tasks = tasks.filter(
+            Q(project__user_client=request.user) |
+            Q(project__manager=request.user)
+        )
 
         paginator = Pagination()
         page = paginator.paginate_queryset(tasks, request, view=self)
@@ -1123,9 +1534,14 @@ class ProjectTaskDetailView(APIView):
 
     def get(self, request, id):
         task = self.get_object(id)
+        if (task.project is None or
+            (task.project.user_client_id != request.user.id and
+            task.project.manager_id != request.user.id)):
+            return Response({"detail": "You do not have permission to access this task."},status=status.HTTP_403_FORBIDDEN)
+        
         serializer = ProjectTaskSerializer(task,context={"request": request})
         return Response(serializer.data)
-
+        
     def put(self, request, id):
         return self._update(request, id, partial=False)
 
@@ -1140,76 +1556,228 @@ class ProjectTaskDetailView(APIView):
         return Response(
             ProjectTaskSerializer(task,context={"request": request}).data)
 
-    # def delete(self, request, id):
-    #     task = self.get_object(id)
-    #     task.is_deleted = True
-    #     task.modified_by = request.user
-
-    #     task.save(
-    #         update_fields=[
-    #             'is_deleted',
-    #             'modified_by',
-    #             'modified_at'
-    #         ])
-
-    #     return Response({"detail": "Task deleted successfully."}, status=status.HTTP_200_OK)
-
 
 # TASK COMMENT
-class TaskCommentCreateView(APIView):
+class TaskCommentView(APIView):
     permission_classes = [IsAuthenticated]
 
-    def post(self, request, id):
-        task = get_object_or_404(ProjectTask,pk=id)
+    def get(self, request, comment_id=None):
+        task = get_object_or_404(ProjectTask,pk=project_task_id)
+        
+        project_task_id = request.query_params.get("project_task")
+        if not project_task_id:
+            return Response(
+                {"project_task": "project_task is required."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        if not project_task_id.isdigit():
+            return Response(
+                {"project_task": "Enter a valid project task ID."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
         if task.is_deleted:
-            return Response({"detail": "Cannot comment on a deleted task."},status=status.HTTP_400_BAD_REQUEST)
+            return Response({"detail": "Cannot access comments of a deleted task."},status=status.HTTP_400_BAD_REQUEST)
 
-        if request.user not in [task.assign_by,task.assign_to]:
-            return Response({"detail":"Only assigned users can comment on this task."},status=status.HTTP_403_FORBIDDEN)
+        if (
+            request.user != task.assign_by and
+            request.user != task.assign_to and
+            (task.project is None or task.project.user_client_id != request.user.id)
+        ):
+            return Response({"detail":"You do not have permission to view these comments."},status=status.HTTP_403_FORBIDDEN)
 
-        serializer = TaskCommentSerializer(data=request.data,context={"request": request})
+        comments = task.comments.select_related(
+            'task',
+            'task__project',
+            'task__task_status',
+            'user'
+        ).order_by("-id")
+
+        serializer = TaskCommentSerializer(
+            comments,
+            many=True,
+            context={"request": request}
+        )
+
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+    # POST: Create a comment
+    def post(self, request, comment_id=None):
+        project_task_id = request.data.get("project_task")
+
+        if not project_task_id:
+            return Response({"project_task": "project_task is required."},status=status.HTTP_400_BAD_REQUEST)
+        if not str(project_task_id).isdigit():
+            return Response({"project_task": "Enter a valid project task ID."},status=status.HTTP_400_BAD_REQUEST)
+        
+        task = get_object_or_404( ProjectTask,pk=project_task_id)
+        if task.is_deleted:
+            return Response(
+                {"detail": "Cannot comment on a deleted task."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        if request.user not in [task.assign_by, task.assign_to]:
+            return Response(
+                {"detail": "Only assigned users can comment on this task."},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        serializer = TaskCommentSerializer(
+            data=request.data,
+            context={"request": request}
+        )
+
         serializer.is_valid(raise_exception=True)
-        comment = serializer.save(task=task,user=request.user)
+        comment = serializer.save(task=task, user=request.user)
 
-        return Response(TaskCommentSerializer(comment,context={"request": request}).data,status=status.HTTP_201_CREATED)
+        return Response(
+            TaskCommentSerializer(
+                comment,
+                context={"request": request}
+            ).data,
+            status=status.HTTP_201_CREATED
+        )
 
+    # PATCH: Update own comment
+    def patch(self, request, comment_id=None):
+        if comment_id is None:
+            return Response(
+                {"comment_id": "Comment ID is required in URL."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
-class TaskCommentDeleteView(APIView):
-    permission_classes = [IsAuthenticated]
+        comment = get_object_or_404(
+            TaskComment.objects.select_related(
+                'task',
+                'task__project',
+                'user'
+            ),
+            pk=comment_id
+        )
 
-    def delete(self, request, id, comment_id):
-        task = get_object_or_404(ProjectTask,pk=id,is_deleted=False)
-        comment = get_object_or_404(TaskComment,pk=comment_id,task=task)
+        task = comment.task
 
-        if request.user not in [task.assign_by,task.assign_to]:
-            return Response({"detail":"Only assigned users can delete comments."},status=status.HTTP_403_FORBIDDEN)
+        if task is None or task.is_deleted:
+            return Response(
+                {"detail": "Cannot update comments of a deleted task."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        if request.user not in [task.assign_by, task.assign_to]:
+            return Response(
+                {"detail": "Only assigned users can update comments."},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        if comment.user != request.user:
+            return Response(
+                {"detail": "You can only update your own comment."},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        if str(request.data.get("project_task")) != str(task.id):
+            return Response(
+                {"project_task": "This comment does not belong to the provided project task."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        serializer = TaskCommentSerializer(
+            comment,
+            data={"comment": request.data.get("comment")},
+            partial=True,
+            context={"request": request}
+        )
+
+        serializer.is_valid(raise_exception=True)
+        comment = serializer.save()
+
+        return Response(
+            TaskCommentSerializer(
+                comment,
+                context={"request": request}
+            ).data,
+            status=status.HTTP_200_OK
+        )
+
+    # DELETE: Delete a comment
+    def delete(self, request, comment_id=None):
+        if comment_id is None:
+            return Response(
+                {"comment_id": "Comment ID is required in URL."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        comment = get_object_or_404(
+            TaskComment.objects.select_related('task'),
+            pk=comment_id
+        )
+
+        task = comment.task
+
+        if task is None or task.is_deleted:
+            return Response(
+                {"detail": "Cannot delete comments of a deleted task."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        if request.user not in [task.assign_by, task.assign_to]:
+            return Response(
+                {"detail": "Only assigned users can delete comments."},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
         comment.delete()
-        return Response({"detail": "Comment deleted successfully."},status=status.HTTP_200_OK)
 
+        return Response(
+            {"detail": "Comment deleted successfully."},
+            status=status.HTTP_200_OK
+        )
+
+# class TaskCommentCreateView(APIView):
+#     permission_classes = [IsAuthenticated]
+
+#     def post(self, request, id):
+#         task = get_object_or_404(ProjectTask,pk=id)
+
+#         if task.is_deleted:
+#             return Response({"detail": "Cannot comment on a deleted task."},status=status.HTTP_400_BAD_REQUEST)
+
+#         if request.user not in [task.assign_by,task.assign_to]:
+#             return Response({"detail":"Only assigned users can comment on this task."},status=status.HTTP_403_FORBIDDEN)
+
+#         serializer = TaskCommentSerializer(data=request.data,context={"request": request})
+#         serializer.is_valid(raise_exception=True)
+#         comment = serializer.save(task=task,user=request.user)
+
+#         return Response(TaskCommentSerializer(comment,context={"request": request}).data,status=status.HTTP_201_CREATED)
+
+
+# class TaskCommentDeleteView(APIView):
+#     permission_classes = [IsAuthenticated]
+#     def delete(self, request, id, comment_id):
+#         task = get_object_or_404(ProjectTask,pk=id,is_deleted=False)
+#         comment = get_object_or_404(TaskComment,pk=comment_id,task=task)
+#         if request.user not in [task.assign_by,task.assign_to]:
+#             return Response({"detail":"Only assigned users can delete comments."},status=status.HTTP_403_FORBIDDEN)
+#         comment.delete()
+#         return Response({"detail": "Comment deleted successfully."},status=status.HTTP_200_OK)
 
 
 # USER RESTORE
 class UserRestoreView(APIView):
     permission_classes=[IsAuthenticated]
-
     def post(self, request, id=None):
         raw= request.query_params.get("ids","") + "," + str(request.data.get("ids","")).strip("[]")
         ids= {int(x) for x in raw.replace(" ","").split(",") if x.isdigit()}
         if id:
             ids.add(id)
-        users= User.objects.filter(pk__in=ids, status=User.Status.INACTIVE)
-        # restored= list(users.values_list("id", flat=True))
-        # if not restored:
-        #     return Response({"detail": "No inactive user found for given ids"}, status=status.HTTP_400_BAD_REQUEST)
-        
+        users= User.objects.filter(pk__in=ids, status=User.Status.INACTIVE)       
         restored_users = list(users.select_related("profile"))
         if not restored_users:
             return Response({"detail": "No inactive user found for given ids."}, status=status.HTTP_400_BAD_REQUEST)
 
         now = timezone.now()
         with transaction.atomic():
-            users.update(status=User.Status.ACTIVE,modified_by=request.user, modified_at= now)
+            users.update(status=User.Status.ACTIVE)
             client_emails = [
             user.email
             for user in restored_users
@@ -1218,15 +1786,13 @@ class UserRestoreView(APIView):
             and user.profile.role.lower() == "client"
             and user.email
         ]
-
-            Client.objects.filter(email__in=client_emails).update(status=Client.Status.ACTIVE,modified_by=request.user,modified_at=now)
+            Client.objects.filter(email__in=client_emails).update(status=Client.Status.ACTIVE)
         return Response({"detail": "Users restored successfully."}, status=status.HTTP_200_OK)
 
 
 # CLIENT RESTORE
 class ClientRestoreView(APIView):
     permission_classes=[IsAuthenticated]
-
     def post(self, request, id=None):
         raw= request.query_params.get("ids","") + "," + str(request.data.get("ids","")).strip("[]")
         ids= {int(x) for x in raw.replace(" ","").split(",") if x.isdigit()}
@@ -1236,15 +1802,13 @@ class ClientRestoreView(APIView):
         restored= list(clients.values_list("id", flat=True))
         if not restored:
             return Response({"detail": "No inactive client found for given ids."}, status=status.HTTP_400_BAD_REQUEST)
-        clients.update(status=Client.Status.ACTIVE, modified_by=request.user, modified_at=timezone.now())
-
+        clients.update(status=Client.Status.ACTIVE)
         return Response({"detail": "client restored successfully."}, status=status.HTTP_200_OK)
 
 
 # PROJECT RESTORE
 class ProjectRestoreView(APIView):
     permission_classes=[IsAuthenticated]
-
     def post(self, request, id=None):
         raw= request.query_params.get("ids","") + "," + str(request.data.get("ids","")).strip("[]")
         ids= {int(x) for x in raw.replace(" ","").split(",") if x.isdigit()}
@@ -1254,26 +1818,18 @@ class ProjectRestoreView(APIView):
         restored= list(projects.values_list("id", flat=True))
         if not restored:
             return Response({"detail": "No deleted project found for given ids."}, status=status.HTTP_400_BAD_REQUEST)
-        projects.update(is_deleted=False, modified_by=request.user, modified_at=timezone.now())
+        projects.update(is_deleted=False)
         return Response({"detail": "Projects restored successfully."}, status=status.HTTP_200_OK)
 
 
 # TASK RESTORE
 class ProjectTaskRestoreView(APIView):
     permission_classes = [IsAuthenticated]
-
     def post(self, request, id):
         task = get_object_or_404(ProjectTask,pk=id,is_deleted=True)
         task.is_deleted = False
-        task.modified_by= request.user
-        task.save(
-            update_fields=[
-                'is_deleted',
-                'modified_by',
-                'modified_at'
-            ])
-
+        task.save(update_fields=['is_deleted'])
         return Response({"detail": "Task restored successfully."},status=status.HTTP_200_OK)
 
-    
+  
 

@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from datetime import date
-from .models import User, Client, Project, ProjectAttachement, Profile, ProjectTask, TaskComment
+from .models import User, Client, Project,Project_Status,Project_Type, ProjectAttachement, Profile, ProjectTask, Task_Status, TaskComment
 
 USER_FIELDS= [
     'id','username','email','first_name','last_name',
@@ -45,13 +45,17 @@ class UserCreateSerializer(serializers.ModelSerializer):
         return profile
 
     def validate(self, attrs):
+        unknown_fields = set(self.initial_data.keys()) - set(self.fields.keys())
+        if unknown_fields:
+            raise serializers.ValidationError({field: "This field does not exist."for field in unknown_fields})
+        
         required_fields= ['email','profile']
 
         for field in required_fields:
             value= attrs.get(field)
             if value is None or not str(value).strip():
                 raise serializers.ValidationError({field: f"{field} is required."})
-        profile= attrs.get('profile')
+        profile= attrs.get('profile')      #client model m same email h ya nhi check krta h
         if profile.role and profile.role.lower() == "client":
             if Client.objects.filter(email__iexact=attrs['email']).exists():
                 raise serializers.ValidationError({"email": "A client with this email already exists."})
@@ -144,6 +148,10 @@ class UserUpdateSerializer(serializers.ModelSerializer):
         return value
 
     def validate(self, attrs):
+        unknown_fields = set(self.initial_data.keys()) - set(self.fields.keys())
+        if unknown_fields:
+            raise serializers.ValidationError({field: "This field does not exist."for field in unknown_fields})
+        
         if "username" in self.initial_data:
             raise serializers.ValidationError({"username": "Username cannot be updated."})
         if "email" in self.initial_data:
@@ -183,11 +191,14 @@ class ProfileSerializer(serializers.ModelSerializer):
         return value
 
     def validate(self,attrs):
+        unknown_fields = set(self.initial_data.keys()) - set(self.fields.keys())
+        if unknown_fields:
+            raise serializers.ValidationError({field: "This field does not exist."for field in unknown_fields})
+        
         if not self.partial and "role" not in attrs:
             raise serializers.ValidationError({"role":"role is required."})
         return attrs
     
-
     
 class LoginSerializer(serializers.Serializer):
     email = serializers.EmailField()   
@@ -242,6 +253,10 @@ class ClientSerializer(serializers.ModelSerializer):
         return value
 
     def validate(self,attrs):
+        unknown_fields = set(self.initial_data.keys()) - set(self.fields.keys())
+        if unknown_fields:
+            raise serializers.ValidationError({field: "This field does not exist."for field in unknown_fields})
+        
         if self.instance is None:
             required_fields= ["first_name", "last_name","email"]
         else:
@@ -265,7 +280,6 @@ class ClientSerializer(serializers.ModelSerializer):
             profile= {"id": obj.created_by.profile.id, "role": obj.created_by.profile.role}
         return {"id": obj.created_by.id, "first_name": obj.created_by.first_name, "last_name": obj.created_by.last_name, "email": obj.created_by.email,"profile":profile}
 
-
     def get_modified_by(self, obj):
         u= obj.modified_by
         if u is None:
@@ -277,12 +291,58 @@ class ClientSerializer(serializers.ModelSerializer):
         return {"id": u.id, "first_name": u.first_name, "last_name": u.last_name, "email": u.email,"profile": profile}
 
 
+# Project Type Serializer
+class ProjectTypeSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Project_Type
+        fields = ['id', 'project_type', 'is_default']
+        read_only_fields = ['id', 'is_default']
+
+    def validate_project_type(self, value):
+        value = value.strip()
+        if not value:
+            raise serializers.ValidationError("Project type is required.")
+        project_types = Project_Type.objects.filter( project_type__iexact=value)
+
+        if self.instance:
+            project_types = project_types.exclude(pk=self.instance.pk)
+        if project_types.exists():
+            raise serializers.ValidationError("This project type already exists.")
+        return value
+
+    def validate(self, attrs):
+        unknown_fields = set(self.initial_data.keys()) - set(self.fields.keys())
+        if unknown_fields:
+            raise serializers.ValidationError({field: "This field does not exist."for field in unknown_fields})
+        return attrs
+
+# Project Status Serializer
+class ProjectStatusSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Project_Status
+        fields = ['id', 'project_status', 'is_default']
+        read_only_fields = ['id', 'is_default']
+
+    def validate_project_status(self, value):
+        value = value.strip()
+        if not value:
+            raise serializers.ValidationError("Project status is required.")
+
+        project_statuses = Project_Status.objects.filter(project_status__iexact=value)
+        if self.instance:
+            project_statuses = project_statuses.exclude(pk=self.instance.pk)
+        if project_statuses.exists():
+            raise serializers.ValidationError("This project status already exists.")
+        return value
+
+    def validate(self, attrs):
+        unknown_fields = set(self.initial_data.keys()) - set(self.fields.keys())
+        if unknown_fields:
+            raise serializers.ValidationError({field: "This field does not exist."for field in unknown_fields})
+        return attrs
 
 
-
-    
 #project 
-
 class ProjectSerializer(serializers.ModelSerializer):
     manager= serializers.PrimaryKeyRelatedField(
         queryset= User.objects.all(), required= False, allow_null=True,
@@ -292,6 +352,27 @@ class ProjectSerializer(serializers.ModelSerializer):
         queryset= Client.objects.all(), required= False, allow_null=True,
         error_messages={"does_not_exist": "client does not exist.", "incorrect_type": "client must be a valid id."}
     )
+    user_client = serializers.PrimaryKeyRelatedField(
+        queryset=User.objects.all(),
+        required=False,
+        allow_null=True,
+        error_messages={
+            "does_not_exist": "User client does not exist.",
+            "incorrect_type": "User client must be a valid ID."
+        }
+    )
+    project_type = serializers.PrimaryKeyRelatedField(
+        queryset=Project_Type.objects.all(),
+        required=False,
+        allow_null=True,
+        error_messages={"does_not_exist": "Project type does not exist.", "incorrect_type": "Project type must be a valid ID.","null":"Project Type is required."}
+    )
+    project_status = serializers.PrimaryKeyRelatedField(
+        queryset=Project_Status.objects.all(),
+        required=False,
+        allow_null=True,
+        error_messages={ "does_not_exist": "Project status does not exist.", "incorrect_type": "Project status must be a valid ID.","null":"Project Status is required."}
+    )
     created_by = serializers.SerializerMethodField()
     modified_by = serializers.SerializerMethodField()
     attachements= serializers.SerializerMethodField()
@@ -300,7 +381,7 @@ class ProjectSerializer(serializers.ModelSerializer):
         model= Project
         fields=[
             'id','project_title','project_type','project_status',
-            'description','attachements','start_date','date_of_completion','client',
+            'description','attachements','start_date','date_of_completion','client','user_client',
             'manager','is_deleted','created_by','created_at','modified_by','modified_at'
         ]
         read_only_fields=['id','start_date','is_deleted','created_by','created_at','modified_by','modified_at']
@@ -313,51 +394,47 @@ class ProjectSerializer(serializers.ModelSerializer):
             if projects.exists():
                 raise serializers.ValidationError("A project with this title already exists.")
         return value
-    
-    def to_representation(self, instance):
-        data= super().to_representation(instance)
-
-        manager= instance.manager
-        if manager is None:
-            data["manager"]= None
-        else:
-            data["manager"]= {
-                "id": manager.id,
-                "username": manager.username,
-                "first_name": manager.first_name,
-                "last_name": manager.last_name,
-                "email": manager.email,
-                "profile_id": manager.profile_id,          
-            }
-
-        client= instance.client
-        if client is None:
-            data["client"]= None
-        else:
-            data["client"]= {
-                "id": client.id,
-                "first_name": client.first_name,
-                "last_name": client.last_name,
-                "email": client.email,
-            }
-        return data
 
     def validate(self,attrs):
+        unknown_fields = set(self.initial_data.keys()) - set(self.fields.keys())
+        if unknown_fields:
+            raise serializers.ValidationError({field: "This field does not exist."for field in unknown_fields})
         
-        required_fields= ['project_title','project_type','manager']
+        required_fields= ['project_title','project_type','project_status','manager']
         for field in required_fields:
             if self.partial and field not in attrs:
                 continue
             value= attrs.get(field)
             if value is None:
                 raise serializers.ValidationError({field: f'{field} is required.'})
-            if field in ['project_title','project_type'] and not value.strip():
+            if field == 'project_title' and not value.strip():
                 raise serializers.ValidationError({field: f'{field} is required.'})
         
-        client= attrs.get('client')
+        client = attrs.get('client')
+        user_client = attrs.get('user_client')
+
+        if self.instance:
+            if 'client' not in attrs:
+                client = self.instance.client
+
+            if 'user_client' not in attrs:
+                user_client = self.instance.user_client
+
+        if (client is not None and user_client is not None):
+            raise serializers.ValidationError({"client": "Select either Client model ID or User model ID, not both."})
+
         if client is not None and client.status != 'active':
-            raise serializers.ValidationError({'client': 'client is not active.'})
-        
+            raise serializers.ValidationError({'client': 'Client is not active.'})
+
+        if user_client is not None:
+            if user_client.status != 'active':
+                raise serializers.ValidationError({'user_client': ' client is not active.'})
+
+            if (
+                user_client.profile is None or
+                user_client.profile.role.lower() != "client"
+            ):
+                raise serializers.ValidationError({'user_client': 'Only a user with Client role can be assigned.'})
 
         manager= attrs.get('manager')
         if manager is not None and manager.status != 'active':
@@ -366,15 +443,71 @@ class ProjectSerializer(serializers.ModelSerializer):
         if manager is not None and (manager.profile is None or manager.profile.role.lower() != "manager"):
             raise serializers.ValidationError({"manager": "only a user with Manager role can be assigned."})
 
-                # NAYA: date_of_completion start_date se pehle nahi ho sakti
         end= attrs.get('date_of_completion')
         if end:
-            from datetime import date
-            start= self.instance.start_date if self.instance and self.instance.start_date else date.today()
+            start= (
+                self.instance.start_date 
+                if self.instance and self.instance.start_date 
+                else date.today())
             if end < start:
                 raise serializers.ValidationError({'date_of_completion': 'date_of_completion cannot be before start_date.'})
-
         return attrs
+    
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+
+        if instance.client:
+            data['client'] = {
+                "id": instance.client.id,
+                "first_name": instance.client.first_name,
+                "last_name": instance.client.last_name,
+                "email": instance.client.email,
+            }
+        else:
+            data['client'] = None
+
+        if instance.user_client:
+            data['user_client'] = {
+                "id": instance.user_client.id,
+                "first_name": instance.user_client.first_name,
+                "last_name": instance.user_client.last_name,
+                "email": instance.user_client.email,
+                "profile": instance.user_client.profile.role
+            }
+        else:
+            data['user_client'] = None
+
+        if instance.manager:
+            data['manager'] = {
+                "id": instance.manager.id,
+                "first_name": instance.manager.first_name,
+                "last_name": instance.manager.last_name,
+                "email": instance.manager.email,
+                "profile": instance.manager.profile.role 
+                
+            }
+        else:
+            data['manager'] = None
+
+        if instance.project_type:
+            data['project_type'] = {
+                'id': instance.project_type.id,
+                'project_type': instance.project_type.project_type,
+                'is_default': instance.project_type.is_default
+            }
+        else:
+            data['project_type'] = None
+
+        if instance.project_status:
+            data['project_status'] = {
+                'id': instance.project_status.id,
+                'project_status': instance.project_status.project_status,
+                'is_default': instance.project_status.is_default
+            }
+        else:
+            data['project_status'] = None
+
+        return data
     
     def get_created_by(self, obj):
         if obj.created_by is None:
@@ -400,23 +533,18 @@ class ProjectSerializer(serializers.ModelSerializer):
         items= obj.projectattachement_set.all()
         return ProjectAttachementSerializer(items,many= True, context=self.context).data
         
-
-
 #Project Attachement
-    
-# ALLOWED_Extensions= (".pdf",".doc",".docx",".xls",".xlsx",".png",".jpg",".txt",".zip")
-# Max_FILE_SIZE= 5*1024*1024
-
 class ProjectAttachementSerializer(serializers.ModelSerializer):
-    # created_by = serializers.SerializerMethodField()
-    # modified_by = serializers.SerializerMethodField()
-
     class Meta:
         model= ProjectAttachement
         fields=['id','file','file_name']
         read_only_fields=['id','file_name']
     
     def validate(self, attrs):
+        unknown_fields = set(self.initial_data.keys()) - set(self.fields.keys())
+        if unknown_fields:
+            raise serializers.ValidationError({field: "This field does not exist."for field in unknown_fields})
+        
         required_fields= ['file']
         for field in required_fields:
             if self.partial and field not in attrs:
@@ -433,17 +561,30 @@ class ProjectAttachementSerializer(serializers.ModelSerializer):
                     names.append(f.name)
         return attrs
 
-    
-#Restore
-class RestoreSerializer(serializers.Serializer):
-    model= serializers.ChoiceField(
-        choices= [
-            ('user', 'User'),
-            ('client', 'Client'),
-            ('project','Project')
-        ]
-    ) 
-    id= serializers.IntegerField(min_value=1)
+# Task Status Serializer
+class TaskStatusSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Task_Status
+        fields = ['id', 'status', 'is_default']
+        read_only_fields = ['id', 'is_default']
+
+    def validate_status(self, value):
+        value = value.strip()
+        if not value:
+            raise serializers.ValidationError("Task status is required.")
+        task_statuses = Task_Status.objects.filter(status__iexact=value)
+        
+        if self.instance:
+            task_statuses = task_statuses.exclude(pk=self.instance.pk)
+        if task_statuses.exists():
+            raise serializers.ValidationError( "This task status already exists.")
+        return value
+
+    def validate(self, attrs):
+        unknown_fields = set(self.initial_data.keys()) - set(self.fields.keys())
+        if unknown_fields:
+            raise serializers.ValidationError({field: "This field does not exist."for field in unknown_fields})
+        return attrs
 
 
 # Project Task
@@ -464,7 +605,15 @@ class ProjectTaskSerializer(serializers.ModelSerializer):
             "does_not_exist": "Assign to user does not exist.",
             "incorrect_type": "Assign to must be a valid id."
         })
-
+    task_status = serializers.PrimaryKeyRelatedField(
+        queryset=Task_Status.objects.all(),
+        required=False,
+        allow_null=True,
+        error_messages={
+            "does_not_exist": "Task status does not exist.",
+            "incorrect_type": "Task status must be a valid ID.",
+            "null": "Task Status is required."}
+    )
     comments = serializers.SerializerMethodField()
 
     class Meta:
@@ -493,11 +642,28 @@ class ProjectTaskSerializer(serializers.ModelSerializer):
             data['project'] = {
                 'id': project.id,
                 'project_title': project.project_title,
-                'project_type': project.project_type,
-                'project_status': project.project_status,
+                'project_type': {
+                    'id': project.project_type.id,
+                    'project_type': project.project_type.project_type,
+                    'is_default': project.project_type.is_default
+                }if project.project_type else None,
+                'project_status': {
+                    'id': project.project_status.id,
+                    'project_status': project.project_status.project_status,
+                    'is_default': project.project_status.is_default
+                } if project.project_status else None,
                 'start_date': project.start_date,
-                'date_of_completion': project.date_of_completion,
+                'date_of_completion': project.date_of_completion,              
             }
+            task_status = instance.task_status
+            if task_status is None:
+                data['task_status'] = None
+            else:
+                data['task_status'] = {
+                    'id': task_status.id,
+                    'status': task_status.status,
+                    'is_default': task_status.is_default
+                }
         
         for field in ['assign_by', 'assign_to', 'created_by', 'modified_by']:
             u = getattr(instance, field)
@@ -521,68 +687,92 @@ class ProjectTaskSerializer(serializers.ModelSerializer):
             return []
         comments = obj.comments.all()
         return TaskCommentSerializer(comments, many=True, context=self.context).data
-
+    
     def validate(self, attrs):
-        required_fields = ['project', 'assign_by', 'assign_to', 'title']
-
+        unknown_fields = set(self.initial_data.keys()) - set(self.fields.keys())
+        if unknown_fields:
+            raise serializers.ValidationError({field: "This field does not exist."for field in unknown_fields})
+        
+        required_fields = ['project', 'assign_by', 'assign_to', 'title','task_status']
         for field in required_fields:
             if self.partial and field not in attrs:
                 continue
-            value = attrs.get(field)
 
+            value = attrs.get(field)
             if value is None:
                 raise serializers.ValidationError({field: f"{field} is required."})
 
             if field == 'title' and not value.strip():
                 raise serializers.ValidationError({field: "title is required."})
-
-        
-        assign_by = attrs.get(
-            'assign_by',
-            self.instance.assign_by if self.instance else None
-        )
-
+            
+        assign_by = attrs.get('assign_by',self.instance.assign_by if self.instance else None)
         if assign_by is not None:
             if assign_by.status != 'active':
                 raise serializers.ValidationError({'assign_by': 'Assign by user is not active.'})
 
             if (assign_by.profile is None or assign_by.profile.role.lower() not in ['manager', 'team leader']):
                 raise serializers.ValidationError({'assign_by': 'Only Manager or Team Leader can assign a task.'})
-
-        
-        assign_to = attrs.get(
-            'assign_to',
-            self.instance.assign_to if self.instance else None)
-
+     
+        assign_to = attrs.get('assign_to',self.instance.assign_to if self.instance else None)
         if assign_to is not None and assign_to.status != 'active':
             raise serializers.ValidationError({ 'assign_to': 'Assign to user is not active.'})        
-        # from datetime import date
 
         task_start_date = (self.instance.task_start_date if self.instance else date.today())
-
         task_complete_date = attrs.get('task_complete_date', self.instance.task_complete_date if self.instance else None)
 
         if (task_complete_date is not None and task_complete_date < task_start_date):
             raise serializers.ValidationError({'task_complete_date':'task_complete_date cannot be before task_start_date.'})
-
         return attrs
 
 # Task Comment
 class TaskCommentSerializer(serializers.ModelSerializer):
-
+    project_task = serializers.PrimaryKeyRelatedField(
+        queryset=ProjectTask.objects.filter(is_deleted=False),
+        source='task',
+        write_only=True,
+        required=True,
+        error_messages={
+            "does_not_exist": "Project task does not exist.",
+            "incorrect_type": "Project task must be a valid ID."
+        }
+    )
     class Meta:
         model = TaskComment
-        fields = ['id', 'user', 'comment']
+        fields = ['id','project_task', 'user', 'comment']
         read_only_fields = ['id', 'user']
 
     def validate(self,attrs):
+        unknown_fields = set(self.initial_data.keys()) - set(self.fields.keys())
+        if unknown_fields:
+            raise serializers.ValidationError({field: "This field does not exist."for field in unknown_fields})
+        
         comment= attrs.get('comment')
         if comment is None or not comment.strip():
             raise serializers.ValidationError({'comment': 'comment is required.'})
+        
+        if 'task' not in attrs:
+            raise serializers.ValidationError({'project_task': 'project_task is required.'})
         return attrs
 
     def to_representation(self, instance):
         data = super().to_representation(instance)
+        task = instance.task
+
+        if task is None:
+            data['project_task'] = None
+        else:
+            project = task.project
+            task_status = task.task_status
+
+            data['project_task'] = {
+                'id': task.id,
+                'title': task.title,
+                'project': {
+                    'id': project.id,
+                    'project_title': project.project_title
+                } if project else None
+            }
+
         user = instance.user
         if user is None:
             data['user'] = None
@@ -595,4 +785,16 @@ class TaskCommentSerializer(serializers.ModelSerializer):
             }
 
         return data
+
+    
+#Restore
+class RestoreSerializer(serializers.Serializer):
+    model= serializers.ChoiceField(
+        choices= [
+            ('user', 'User'),
+            ('client', 'Client'),
+            ('project','Project')
+        ]
+    ) 
+    id= serializers.IntegerField(min_value=1)
 
