@@ -1,0 +1,11 @@
+$kind: http-request
+url: http://127.0.0.1:8000/api/task-status/
+method: POST
+body:
+  type: json
+  content: "{\r
+
+    \    \"status\":\"completed\"\r
+
+    }"
+order: 2000

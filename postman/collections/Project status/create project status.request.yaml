@@ -1,0 +1,11 @@
+$kind: http-request
+url: http://127.0.0.1:8000/api/project-status/
+method: POST
+body:
+  type: json
+  content: "{\r
+
+    \    \"project_status\": \"Cancelled\"\r
+
+    }"
+order: 2000

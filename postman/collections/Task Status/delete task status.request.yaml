@@ -1,0 +1,7 @@
+$kind: http-request
+url: http://127.0.0.1:8000/api/task-status/2/
+method: DELETE
+body:
+  type: json
+  content: ""
+order: 3000
